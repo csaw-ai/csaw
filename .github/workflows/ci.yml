@@ -26,11 +26,7 @@ jobs:
 
       - name: Check formatting
         shell: bash
-        run: |
-          files="$(git ls-files '*.go')"
-          if [ -n "$files" ]; then
-            test -z "$(gofmt -l $files)"
-          fi
+        run: test -z "$(gofmt -l .)"
 
       - name: Run tests
         run: go test ./...

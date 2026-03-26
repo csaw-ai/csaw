@@ -8,7 +8,7 @@ Standard open-source hygiene — keep secrets, credentials, and local environmen
 
 - Secrets, credentials, API keys, or private keys
 - `.env` files or local environment configuration
-- Workstation-specific absolute paths (e.g., `/Users/yourname/...`)
+- Workstation-specific absolute paths (home directories, machine-local locations)
 - Files containing internal URLs, hostnames, or infrastructure details
 
 ## Guardrails
