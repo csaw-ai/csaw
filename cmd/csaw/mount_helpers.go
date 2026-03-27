@@ -11,9 +11,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/csaw-ai/csaw/internal/mount"
+	"github.com/csaw-ai/csaw/internal/output"
 	"github.com/csaw-ai/csaw/internal/profiles"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/sources"
+	"github.com/csaw-ai/csaw/internal/tui"
 	"github.com/csaw-ai/csaw/internal/workspace"
 )
 
@@ -131,4 +133,60 @@ func entriesFromRestoreState(paths runtime.Paths, projectRoot string) ([]mount.S
 		return nil, err
 	}
 	return mount.EntriesFromMountedState(state), nil
+}
+
+func pickProfile(manager sources.Manager, paths runtime.Paths) (string, error) {
+	// Check if stdin is a terminal
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return "", nil
+	}
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return "", errors.New("no profile specified; use --profile or run interactively")
+	}
+
+	catalog, err := manager.ExistingCatalog()
+	if err != nil {
+		return "", err
+	}
+
+	resolver, err := profiles.NewCatalogResolver(paths, catalog)
+	if err != nil {
+		return "", err
+	}
+
+	allProfiles, err := resolver.All()
+	if err != nil {
+		return "", err
+	}
+
+	if len(allProfiles) == 0 {
+		return "", errors.New("no profiles found in any configured source")
+	}
+
+	items := make([]tui.PickerItem, 0, len(allProfiles))
+	for _, name := range profiles.SortedNames(allProfiles) {
+		p := allProfiles[name]
+		detail := fmt.Sprintf("%d includes", len(p.Include))
+		if len(p.Exclude) > 0 {
+			detail += fmt.Sprintf(", %d excludes", len(p.Exclude))
+		}
+		items = append(items, tui.PickerItem{
+			Name:        name,
+			Description: p.Description,
+			Detail:      detail,
+		})
+	}
+
+	result, err := tui.RunPicker(items, "Select a profile")
+	if err != nil {
+		return "", err
+	}
+
+	if result.Aborted {
+		output.Muted("cancelled")
+		return "", nil
+	}
+
+	return result.Selected, nil
 }
