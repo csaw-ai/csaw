@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/csaw-ai/csaw/internal/drift"
+	"github.com/csaw-ai/csaw/internal/output"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/sources"
 	"github.com/csaw-ai/csaw/internal/workspace"
@@ -55,56 +56,92 @@ func BuildSummary(ctx context.Context, projectRoot string, paths runtime.Paths, 
 }
 
 func RenderSummary(summary Summary) string {
-	title := lipgloss.NewStyle().Bold(true).Render("csaw inspect")
-	key := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	okStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	var b strings.Builder
 
-	var builder strings.Builder
-	builder.WriteString(title)
-	builder.WriteString("\n\n")
-	builder.WriteString(fmt.Sprintf("%s %s\n", key.Render("project:"), summary.ProjectRoot))
-	builder.WriteString(fmt.Sprintf("%s %s\n", key.Render("csaw home:"), summary.Paths.Root))
-	builder.WriteString(fmt.Sprintf("%s %d\n", key.Render("sources:"), len(summary.Sources)))
-	builder.WriteString(fmt.Sprintf("%s %d\n", key.Render("mounted links:"), len(summary.Mounted)))
+	b.WriteString(output.Bold("csaw inspect"))
+	b.WriteString("\n\n")
 
+	// Project info
+	writeLabel(&b, "project", summary.ProjectRoot)
+	writeLabel(&b, "csaw home", summary.Paths.Root)
+	writeLabel(&b, "sources", fmt.Sprintf("%d", len(summary.Sources)))
+	writeLabel(&b, "mounted", fmt.Sprintf("%d", len(summary.Mounted)))
+
+	// Sources
 	if len(summary.Sources) > 0 {
-		builder.WriteString("\nConfigured sources:\n")
+		b.WriteString("\n")
+		b.WriteString(output.Bold("Sources"))
+		b.WriteString("\n")
 		for _, source := range summary.Sources {
-			builder.WriteString(fmt.Sprintf("- %s (%s) -> %s\n", source.Name, source.Kind, source.CheckoutPath(summary.Paths)))
+			b.WriteString(fmt.Sprintf("  %s %s %s %s\n",
+				output.Accent(source.Name),
+				output.Faint("("+string(source.Kind)+")"),
+				output.Faint("→"),
+				source.CheckoutPath(summary.Paths),
+			))
 		}
 	}
 
+	// Mounted links grouped by source
 	if len(summary.Mounted) > 0 {
-		builder.WriteString("\nMounted links:\n")
-		for _, status := range summary.Mounted {
-			label := okStyle.Render("healthy")
-			if !status.Healthy {
-				label = warnStyle.Render(status.Issue)
+		b.WriteString("\n")
+		b.WriteString(output.Bold("Mounted files"))
+		b.WriteString("\n")
+
+		// Group by source name
+		groups := groupBySource(summary.Mounted)
+		for _, group := range groups {
+			b.WriteString(fmt.Sprintf("\n  %s\n", output.Accent(group.name)))
+
+			healthy := 0
+			unhealthy := 0
+			for _, status := range group.statuses {
+				if status.Healthy {
+					healthy++
+				} else {
+					unhealthy++
+				}
 			}
-			if status.SourceName != "" {
-				builder.WriteString(fmt.Sprintf("- %s %s (%s) -> %s\n", label, status.RelativePath, status.SourceName, status.ExpectedSource))
-				continue
+
+			for _, status := range group.statuses {
+				symbol := output.SymbolOK
+				label := ""
+				if !status.Healthy {
+					symbol = output.SymbolWarn
+					label = " " + output.Warn(status.Issue)
+				}
+				b.WriteString(fmt.Sprintf("    %s %s%s\n", symbol, status.RelativePath, label))
 			}
-			builder.WriteString(fmt.Sprintf("- %s %s -> %s\n", label, status.RelativePath, status.ResolvedTarget))
+
+			// Summary line for large groups
+			if len(group.statuses) > 5 {
+				parts := []string{output.Success(fmt.Sprintf("%d healthy", healthy))}
+				if unhealthy > 0 {
+					parts = append(parts, output.Warn(fmt.Sprintf("%d need attention", unhealthy)))
+				}
+				b.WriteString(fmt.Sprintf("    %s\n", output.Faint(strings.Join(parts, ", "))))
+			}
 		}
 	}
 
-	return builder.String()
+	return b.String()
 }
 
 func RenderSourceDetails(source sources.Source, paths runtime.Paths) (string, error) {
-	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("name:\t%s\n", source.Name))
-	builder.WriteString(fmt.Sprintf("kind:\t%s\n", source.Kind))
+	var b strings.Builder
+
+	b.WriteString(output.Bold("Source: " + source.Name))
+	b.WriteString("\n\n")
+	writeLabel(&b, "kind", string(source.Kind))
 	if source.URL != "" {
-		builder.WriteString(fmt.Sprintf("url:\t%s\n", source.URL))
+		writeLabel(&b, "url", source.URL)
 	}
 	if source.Path != "" {
-		builder.WriteString(fmt.Sprintf("path:\t%s\n", source.Path))
+		writeLabel(&b, "path", source.Path)
 	}
-	builder.WriteString(fmt.Sprintf("checkout:\t%s\n", source.CheckoutPath(paths)))
-	return builder.String(), nil
+	writeLabel(&b, "checkout", source.CheckoutPath(paths))
+
+	return b.String(), nil
 }
 
 func RenderMarkdownPreview(path string) (string, error) {
@@ -119,4 +156,77 @@ func RenderMarkdownPreview(path string) (string, error) {
 	}
 
 	return renderer.Render(string(content))
+}
+
+// RenderMountResult formats the output of a mount operation.
+func RenderMountResult(linked, stashed, skipped, alreadyLinked int, toolDirCount int) string {
+	var parts []string
+
+	if linked > 0 {
+		parts = append(parts, output.Success(fmt.Sprintf("%d linked", linked)))
+	}
+	if alreadyLinked > 0 {
+		parts = append(parts, output.Faint(fmt.Sprintf("%d already linked", alreadyLinked)))
+	}
+	if stashed > 0 {
+		parts = append(parts, output.Warn(fmt.Sprintf("%d stashed", stashed)))
+	}
+	if skipped > 0 {
+		parts = append(parts, output.Faint(fmt.Sprintf("%d skipped", skipped)))
+	}
+
+	result := strings.Join(parts, output.Faint(" · "))
+
+	if toolDirCount > 0 {
+		result += "\n" + output.Faint(fmt.Sprintf("  expanded into %d tool directories", toolDirCount))
+	}
+
+	return result
+}
+
+// RenderUnmountResult formats the output of an unmount operation.
+func RenderUnmountResult(removed, restored int) string {
+	var parts []string
+
+	if removed > 0 {
+		parts = append(parts, fmt.Sprintf("%d removed", removed))
+	}
+	if restored > 0 {
+		parts = append(parts, fmt.Sprintf("%d restored", restored))
+	}
+
+	return strings.Join(parts, output.Faint(" · "))
+}
+
+type sourceGroup struct {
+	name     string
+	statuses []drift.Status
+}
+
+func groupBySource(statuses []drift.Status) []sourceGroup {
+	order := make([]string, 0)
+	groups := make(map[string][]drift.Status)
+
+	for _, status := range statuses {
+		name := status.SourceName
+		if name == "" {
+			name = "unknown"
+		}
+		if _, ok := groups[name]; !ok {
+			order = append(order, name)
+		}
+		groups[name] = append(groups[name], status)
+	}
+
+	result := make([]sourceGroup, 0, len(order))
+	for _, name := range order {
+		result = append(result, sourceGroup{name: name, statuses: groups[name]})
+	}
+	return result
+}
+
+var labelKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Width(14)
+
+func writeLabel(b *strings.Builder, key, value string) {
+	b.WriteString(fmt.Sprintf("  %s %s\n", labelKeyStyle.Render(key+":"), value))
 }

@@ -173,6 +173,18 @@ func newMountCommand() *cobra.Command {
 				return err
 			}
 
+			// If no profile, no patterns, and not restoring — show interactive picker
+			if profile == "" && len(args) == 0 && !restore {
+				picked, err := pickProfile(manager, paths)
+				if err != nil {
+					return err
+				}
+				if picked == "" {
+					return nil // user cancelled
+				}
+				profile = picked
+			}
+
 			selection := mount.Selection{
 				IncludePatterns: append([]string(nil), args...),
 				ExcludePatterns: append([]string(nil), excludes...),
@@ -218,13 +230,13 @@ func newMountCommand() *cobra.Command {
 				return nil
 			}
 
-			output.Successf(
-				"mounted %d file(s), stashed %d, skipped %d, already linked %d",
+			fmt.Println(inspect.RenderMountResult(
 				result.Linked,
 				result.Stashed,
 				result.Skipped,
 				result.AlreadyLinked,
-			)
+				len(toolDirs),
+			))
 			return nil
 		},
 	}
@@ -258,7 +270,7 @@ func newUnmountCommand() *cobra.Command {
 				return nil
 			}
 
-			output.Successf("unmounted %d file(s), restored %d original(s)", result.Removed, result.Restored)
+			fmt.Printf("%s %s\n", output.SymbolOK, inspect.RenderUnmountResult(result.Removed, result.Restored))
 			return nil
 		},
 	}
