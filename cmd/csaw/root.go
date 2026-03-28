@@ -123,7 +123,7 @@ func newSourceCommand() *cobra.Command {
 			}
 
 			if len(cfg.Sources) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no sources configured")
+				output.Muted("no sources configured")
 				return nil
 			}
 
@@ -132,9 +132,10 @@ func newSourceCommand() *cobra.Command {
 			for _, source := range items {
 				fmt.Fprintf(
 					cmd.OutOrStdout(),
-					"%s\t%s\t%s\n",
-					source.Name,
-					source.Kind,
+					"  %s %s %s %s\n",
+					output.Accent(source.Name),
+					output.Faint("("+string(source.Kind)+")"),
+					output.Faint("→"),
 					source.CheckoutPath(manager.Paths),
 				)
 			}
@@ -368,24 +369,32 @@ func newCheckCommand() *cobra.Command {
 				statuses = drift.InspectLinks(links)
 			}
 			if len(statuses) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no mounted csaw links found")
+				output.Muted("no mounted csaw links found")
 				return nil
 			}
 
+			healthy := 0
 			unhealthy := 0
 			for _, status := range statuses {
 				if status.Healthy {
-					fmt.Fprintf(cmd.OutOrStdout(), "ok\t%s\t%s\n", status.RelativePath, status.ResolvedTarget)
+					healthy++
 					continue
 				}
-
 				unhealthy++
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", status.Issue, status.RelativePath, status.ResolvedTarget)
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s %s %s\n",
+					output.SymbolWarn,
+					status.RelativePath,
+					output.Warn(status.Issue),
+				)
 			}
 
 			if unhealthy > 0 {
+				fmt.Fprintln(cmd.OutOrStdout())
+				output.Warnf("%d unhealthy, %d healthy", unhealthy, healthy)
 				return fmt.Errorf("%d mounted link(s) need attention", unhealthy)
 			}
+
+			output.Successf("%d links healthy", healthy)
 
 			return nil
 		},
@@ -556,24 +565,27 @@ func newStatusCommand() *cobra.Command {
 			}
 			sort.Strings(names)
 
-			fmt.Fprintf(cmd.OutOrStdout(), "project:\t%s\n", projectRoot)
-			fmt.Fprintf(cmd.OutOrStdout(), "csaw home:\t%s\n", paths.Root)
-			fmt.Fprintf(cmd.OutOrStdout(), "sources:\t%d", len(cfg.Sources))
+			output.Header("csaw status")
+			fmt.Println()
+			output.Label("project:", projectRoot)
+			output.Label("csaw home:", paths.Root)
+
+			sourcesSummary := fmt.Sprintf("%d", len(cfg.Sources))
 			if len(names) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "\t%s", strings.Join(names, ", "))
+				sourcesSummary += " " + output.Faint("("+strings.Join(names, ", ")+")")
 			}
-			fmt.Fprintln(cmd.OutOrStdout())
+			output.Label("sources:", sourcesSummary)
 
 			manifest, err := workspace.FileStateStore{}.ReadManifest(projectRoot)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "mounted:\t%d\n", len(state.Entries))
-			fmt.Fprintf(cmd.OutOrStdout(), "stashed:\t%d\n", len(manifest))
-			for _, entry := range state.Entries {
-				fmt.Fprintf(cmd.OutOrStdout(), "link:\t%s\t%s\n", entry.RelativePath, entry.SourceName)
+			mountedSummary := fmt.Sprintf("%d", len(state.Entries))
+			if len(manifest) > 0 {
+				mountedSummary += output.Faint(fmt.Sprintf(" · %d stashed", len(manifest)))
 			}
+			output.Label("mounted:", mountedSummary)
 
 			return nil
 		},
