@@ -46,10 +46,29 @@ GoReleaser supports Winget manifest generation, Nix package generation, Docker i
 
 ## Release workflow
 
-One GitHub Actions workflow triggered by pushing a version tag:
+One GitHub Actions workflow triggered by pushing a version tag.
+
+### How to cut a release
+
+1. **Ensure main is clean and CI has passed.** All commits should already be on `origin/main`.
+
+2. **Choose the version.** Follow semver:
+   - **Patch** (`v0.1.1`): bug fixes, small additions that don't change behavior
+   - **Minor** (`v0.2.0`): new features, new commands, new config surface
+   - **Major** (`v1.0.0`): breaking changes to CLI, config format, or mount behavior
+
+3. **Tag and push:**
+   ```bash
+   git tag -a v0.1.1 -m "v0.1.1: short description of what changed"
+   git push origin v0.1.1
+   ```
+
+4. **Verify the release.** Check the GitHub Actions run and the resulting GitHub Release page.
+
+The tag push triggers the full pipeline automatically:
 
 ```
-git tag v0.1.0 && git push --tags
+git tag -a v0.1.1 -m "..." && git push origin v0.1.1
 
   GoReleaser job:
     ├── Cross-compile (linux/mac/win x amd64/arm64)

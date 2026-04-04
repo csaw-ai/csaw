@@ -128,6 +128,28 @@ Use the repo-local skills when the task matches:
 - [`skills/exec-plan-maintenance/SKILL.md`](skills/exec-plan-maintenance/SKILL.md)
 - [`skills/doc-gardening/SKILL.md`](skills/doc-gardening/SKILL.md)
 
+## Releasing
+
+Releases are cut by tagging main. See [`docs/reference/distribution.md`](docs/reference/distribution.md) for full details.
+
+When the user asks to release, or when a meaningful set of changes has landed and the user
+confirms they want a release:
+
+1. Verify main is pushed and CI has passed.
+2. Find the current version: `git describe --tags --abbrev=0`
+3. Determine the next version using semver:
+   - **Patch** (bug fixes, small non-breaking additions)
+   - **Minor** (new features, new config surface, new commands)
+   - **Major** (breaking changes to CLI, config format, or mount behavior)
+4. Tag with an annotated tag and a short description:
+   ```bash
+   git tag -a v0.X.Y -m "v0.X.Y: short description"
+   git push origin v0.X.Y
+   ```
+5. Confirm the GitHub Actions release workflow triggered successfully.
+
+Do not tag without the user's approval. Do not skip the version bump rationale.
+
 ## Hard Constraints
 
 - Preserve the Phase 1 public command surface from the brief.
