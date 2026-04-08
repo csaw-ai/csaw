@@ -15,21 +15,19 @@ Handled by GoReleaser from a single `.goreleaser.yml`, triggered by a git tag.
 | GitHub Releases | Download binary | Everyone (baseline) |
 | Homebrew Cask | `brew install --cask csaw-ai/tap/csaw` | macOS and Linux devs |
 | Scoop | `scoop install csaw` | Windows devs |
+| PyPI | `uv tool install csaw` | Python ecosystem / cross-platform |
 
-**Repos to create:**
+**Repos:**
 - `csaw-ai/homebrew-tap` — GoReleaser auto-populates the cask on release
 - `csaw-ai/scoop-bucket` — GoReleaser auto-populates the manifest on release
 
-### Phase 2 — Growth
+**PyPI** — uses [go-to-wheel](https://github.com/simonw/go-to-wheel) to package compiled Go binaries as Python wheels. Each wheel embeds the binary for a specific platform (e.g., `macosx_11_0_arm64`, `manylinux_2_17_x86_64`). pip/uv automatically selects the correct wheel. A thin Python wrapper calls `os.execvp()` to run the embedded binary. Build script: `scripts/build-pypi-wheels.py`. Published via trusted publishing (OIDC) in the `pypi` job of the release workflow.
 
-Add PyPI and npm to reach developers through package managers they already use daily.
+### Phase 2 — Growth
 
 | Channel | Command | Audience |
 |---|---|---|
-| PyPI | `pip install csaw` / `uvx csaw` | Python ecosystem |
 | npm | `npx csaw` / `npm install -g csaw` | Node/frontend ecosystem |
-
-**PyPI** — use [go-to-wheel](https://github.com/simonw/go-to-wheel) to package compiled Go binaries as Python wheels. Each wheel embeds the binary for a specific platform (e.g., `macosx_11_0_arm64`, `manylinux_2_17_x86_64`). pip/uv automatically selects the correct wheel for the user's OS and architecture. A thin Python wrapper (`csaw/__init__.py`) calls `os.execvp()` to run the embedded binary. The `csaw` name is already reserved on PyPI.
 
 **npm** — follow the [esbuild pattern](https://github.com/evanw/esbuild/issues/789): publish scoped platform packages (`@csaw-ai/csaw-darwin-arm64`, `@csaw-ai/csaw-linux-x64`, etc.) as optional dependencies of a main `csaw` package. npm installs only the matching platform package. A thin JS wrapper finds and execs the binary. No postinstall scripts.
 
@@ -76,13 +74,9 @@ git tag -a v0.1.1 -m "..." && git push origin v0.1.1
     ├── Homebrew cask → csaw-ai/homebrew-tap
     └── Scoop manifest → csaw-ai/scoop-bucket
 
-  PyPI job (parallel, Phase 2):
-    ├── go-to-wheel builds platform wheels
-    └── twine upload dist/*
-
-  npm job (parallel, Phase 2):
-    ├── Copy binaries into @csaw-ai/csaw-{platform} packages
-    └── npm publish for each
+  PyPI job (runs after GoReleaser):
+    ├── go-to-wheel builds 8 platform wheels
+    └── Trusted publishing (OIDC) → pypi.org/project/csaw
 ```
 
 ## Version injection
@@ -108,11 +102,11 @@ brew install --cask csaw-ai/tap/csaw
 scoop bucket add csaw-ai https://github.com/csaw-ai/scoop-bucket
 scoop install csaw
 
-# Python ecosystem
-pip install csaw
-uvx csaw mount --profile backend
+# Any platform (recommended)
+uv tool install csaw
+csaw mount --profile backend
 
-# Node ecosystem
+# Node ecosystem (Phase 2)
 npx csaw mount --profile backend
 
 # Verify
@@ -129,6 +123,6 @@ The binary is identical across all channels. Only the packaging differs.
 | `csaw-ai/homebrew-tap` GitHub repo | Trivial | First release |
 | `csaw-ai/scoop-bucket` GitHub repo | Trivial | First release |
 | GitHub Actions release workflow | Medium | First release |
-| PyPI publishing workflow (go-to-wheel) | Medium | Phase 2 |
+| ~~PyPI publishing workflow (go-to-wheel)~~ | ~~Medium~~ | ~~Done (v0.1.2)~~ |
 | npm packages (esbuild pattern) | Medium | Phase 2 |
 | Winget / Nix / Docker / AUR | Low each | Phase 3 |

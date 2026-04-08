@@ -7,6 +7,7 @@
     <a href="https://github.com/csaw-ai/csaw/actions"><img src="https://github.com/csaw-ai/csaw/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
     <a href="https://github.com/csaw-ai/csaw/releases"><img src="https://img.shields.io/github/v/release/csaw-ai/csaw?include_prereleases&label=version" alt="Version"></a>
+    <a href="https://pypi.org/project/csaw/"><img src="https://img.shields.io/pypi/v/csaw" alt="PyPI"></a>
   </p>
   <p align="center">
     Works with: Claude Code · OpenCode · Codex · Cursor · Windsurf · Gemini CLI
@@ -46,6 +47,9 @@ csaw mounts these files from a central registry using symlinks. When you're done
 ## Install
 
 ```bash
+# Recommended (any platform)
+uv tool install csaw
+
 # macOS / Linux
 brew install --cask csaw-ai/tap/csaw
 
@@ -54,17 +58,20 @@ scoop bucket add csaw-ai https://github.com/csaw-ai/scoop-bucket
 scoop install csaw
 ```
 
-> **macOS note:** If you see "Apple could not verify", run:
+> **macOS note (Homebrew):** If you see "Apple could not verify", run:
 > ```bash
 > xattr -d com.apple.quarantine "$(which csaw)"
 > ```
 > This is normal for unsigned CLI tools distributed via Homebrew casks.
 
 <details>
-<summary>Install from source</summary>
+<summary>Other install methods</summary>
 
 ```bash
-# Requires Go 1.22+
+# pipx
+pipx install csaw
+
+# Go from source (requires Go 1.22+)
 go install github.com/csaw-ai/csaw/cmd/csaw@latest
 ```
 
