@@ -15,6 +15,7 @@ import (
 	"github.com/csaw-ai/csaw/internal/drift"
 	"github.com/csaw-ai/csaw/internal/git"
 	"github.com/csaw-ai/csaw/internal/inspect"
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/mount"
 	"github.com/csaw-ai/csaw/internal/output"
 	"github.com/csaw-ai/csaw/internal/runtime"
@@ -360,7 +361,7 @@ func newCheckCommand() *cobra.Command {
 
 			var statuses []drift.Status
 			if len(state.Entries) > 0 {
-				statuses = drift.InspectMountState(projectRoot, state)
+				statuses = drift.InspectMountState(projectRoot, state, linkmode.Detect())
 			} else {
 				links, err := workspace.FindMountedLinks(projectRoot, paths.Root)
 				if err != nil {
@@ -446,22 +447,37 @@ func newDiffCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
-			info, err := os.Lstat(target)
-			if err != nil {
-				return err
-			}
-			if info.Mode()&os.ModeSymlink == 0 {
-				return fmt.Errorf("%s is not a symlink", target)
-			}
-
-			linkTarget, err := os.Readlink(target)
-			if err != nil {
+			if _, err := os.Lstat(target); err != nil {
 				return err
 			}
 
-			resolvedTarget := linkTarget
-			if !filepath.IsAbs(resolvedTarget) {
-				resolvedTarget = filepath.Join(filepath.Dir(target), linkTarget)
+			// Try resolving via symlink first
+			resolvedTarget, err := os.Readlink(target)
+			if err != nil {
+				// Not a symlink — look up the source from mount state (hardlink case)
+				projectRoot, prErr := runtime.FindRepoRoot(filepath.Dir(target))
+				if prErr != nil {
+					return fmt.Errorf("%s is not a mounted file", target)
+				}
+				state, stErr := workspace.ReadMountState(projectRoot)
+				if stErr != nil {
+					return fmt.Errorf("%s is not a mounted file", target)
+				}
+				absTarget, _ := filepath.Abs(target)
+				found := false
+				for _, entry := range state.Entries {
+					entryPath := filepath.Join(projectRoot, filepath.FromSlash(entry.RelativePath))
+					if runtime.PathsEqual(entryPath, absTarget) {
+						resolvedTarget = entry.SourcePath
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("%s is not a mounted file", target)
+				}
+			} else if !filepath.IsAbs(resolvedTarget) {
+				resolvedTarget = filepath.Join(filepath.Dir(target), resolvedTarget)
 			}
 
 			diffCmd := exec.Command("git", "diff", "--no-index", "--", target, resolvedTarget)

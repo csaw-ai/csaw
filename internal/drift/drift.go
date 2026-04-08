@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/workspace"
 )
@@ -47,7 +48,7 @@ func InspectLinks(links []workspace.MountedLink) []Status {
 	return statuses
 }
 
-func InspectMountState(projectRoot string, state workspace.MountState) []Status {
+func InspectMountState(projectRoot string, state workspace.MountState, lm linkmode.Mode) []Status {
 	statuses := make([]Status, 0, len(state.Entries))
 	for _, entry := range state.Entries {
 		fullPath := filepath.Join(projectRoot, filepath.FromSlash(entry.RelativePath))
@@ -64,7 +65,7 @@ func InspectMountState(projectRoot string, state workspace.MountState) []Status 
 			status.Issue = IssueMissingSource
 		}
 
-		info, err := os.Lstat(fullPath)
+		_, err := os.Lstat(fullPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				status.Healthy = false
@@ -74,32 +75,23 @@ func InspectMountState(projectRoot string, state workspace.MountState) []Status 
 			continue
 		}
 
-		if info.Mode()&os.ModeSymlink == 0 {
+		if !linkmode.IsLink(lm, fullPath, entry.SourcePath) {
 			status.Healthy = false
 			status.Issue = IssueReplacedLink
 			statuses = append(statuses, status)
 			continue
 		}
 
-		actualTarget, err := os.Readlink(fullPath)
-		if err != nil {
-			status.Healthy = false
-			statuses = append(statuses, status)
-			continue
-		}
-		status.ActualTarget = actualTarget
-		resolvedTarget := actualTarget
-		if !filepath.IsAbs(resolvedTarget) {
-			resolvedTarget = filepath.Join(filepath.Dir(fullPath), resolvedTarget)
-		}
-		status.ResolvedTarget = runtime.NormalizeFSPath(resolvedTarget)
+		healthy, resolved := linkmode.Verify(lm, fullPath, entry.SourcePath, runtime.PathsEqual)
+		status.ResolvedTarget = runtime.NormalizeFSPath(resolved)
+		status.ActualTarget = resolved
 
 		if status.Issue == IssueMissingSource {
 			statuses = append(statuses, status)
 			continue
 		}
 
-		if !runtime.PathsEqual(status.ResolvedTarget, entry.SourcePath) {
+		if !healthy {
 			status.Healthy = false
 			status.Issue = IssueDriftedLink
 		}

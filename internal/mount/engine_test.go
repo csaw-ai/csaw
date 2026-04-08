@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/sources"
 	"github.com/csaw-ai/csaw/internal/workspace"
@@ -62,12 +63,11 @@ func TestApplyUnmountAndRestoreState(t *testing.T) {
 		t.Fatalf("Apply() result = %#v", result)
 	}
 
-	info, err := os.Lstat(targetFile)
-	if err != nil {
+	if _, err := os.Lstat(targetFile); err != nil {
 		t.Fatalf("Lstat() error = %v", err)
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("mounted target is not a symlink")
+	if !linkmode.IsLink(linkmode.Detect(), targetFile, sourceFile) {
+		t.Fatal("mounted target is not a csaw-managed link")
 	}
 
 	restoreState, err := workspace.ReadRestoreState(paths, project)

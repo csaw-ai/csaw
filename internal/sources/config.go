@@ -218,6 +218,10 @@ func isLocalPath(value string) bool {
 	if strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "/") || strings.HasPrefix(value, "~") {
 		return true
 	}
+	// Windows absolute paths like C:\ or D:/
+	if len(value) >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/') {
+		return true
+	}
 	_, err := os.Stat(value)
 	return err == nil
 }

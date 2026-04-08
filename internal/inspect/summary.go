@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/csaw-ai/csaw/internal/drift"
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/output"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/sources"
@@ -38,7 +39,7 @@ func BuildSummary(ctx context.Context, projectRoot string, paths runtime.Paths, 
 
 	var mounted []drift.Status
 	if len(state.Entries) > 0 {
-		mounted = drift.InspectMountState(projectRoot, state)
+		mounted = drift.InspectMountState(projectRoot, state, linkmode.Detect())
 	} else {
 		links, err := workspace.FindMountedLinks(projectRoot, paths.Root)
 		if err != nil {

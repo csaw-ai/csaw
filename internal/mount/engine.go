@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/csaw-ai/csaw/internal/drift"
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/runtime"
 	"github.com/csaw-ai/csaw/internal/workspace"
 )
@@ -44,6 +45,8 @@ func Apply(projectRoot string, paths runtime.Paths, entries []SourceEntry, resol
 		return Result{}, err
 	}
 
+	lm := linkmode.Detect()
+
 	store := workspace.FileStateStore{}
 	currentState, err := workspace.ReadMountState(projectRoot)
 	if err != nil {
@@ -57,17 +60,10 @@ func Apply(projectRoot string, paths runtime.Paths, entries []SourceEntry, resol
 			return result, err
 		}
 
-		if info, err := os.Lstat(targetPath); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				linkTarget, err := os.Readlink(targetPath)
-				if err != nil {
-					return result, err
-				}
-				resolved := linkTarget
-				if !filepath.IsAbs(resolved) {
-					resolved = filepath.Join(filepath.Dir(targetPath), resolved)
-				}
-				if runtime.PathsEqual(resolved, entry.FullPath) {
+		if _, err := os.Lstat(targetPath); err == nil {
+			if linkmode.IsLink(lm, targetPath, entry.FullPath) {
+				healthy, _ := linkmode.Verify(lm, targetPath, entry.FullPath, runtime.PathsEqual)
+				if healthy {
 					currentState = workspace.UpsertMountedEntry(currentState, toMountedStateEntry(entry))
 					if !workspace.IsGitIgnored(projectRoot, entry.RelativePath) {
 						if _, err := workspace.AddExclusion(projectRoot, entry.RelativePath); err != nil {
@@ -113,7 +109,7 @@ func Apply(projectRoot string, paths runtime.Paths, entries []SourceEntry, resol
 		if _, err := os.Stat(entry.FullPath); err != nil {
 			return result, err
 		}
-		if err := os.Symlink(entry.FullPath, targetPath); err != nil {
+		if err := linkmode.Create(lm, entry.FullPath, targetPath); err != nil {
 			return result, err
 		}
 
@@ -157,14 +153,16 @@ func Unmount(projectRoot string, selection Selection) (Result, error) {
 		return Result{}, err
 	}
 
+	lm := linkmode.Detect()
+
 	store := workspace.FileStateStore{}
 	result := Result{}
 	var removedPaths []string
 
 	for _, entry := range selected {
 		targetPath := filepath.Join(projectRoot, filepath.FromSlash(entry.RelativePath))
-		if info, err := os.Lstat(targetPath); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
+		if _, err := os.Lstat(targetPath); err == nil {
+			if linkmode.IsLink(lm, targetPath, entry.SourcePath) {
 				if err := os.Remove(targetPath); err != nil {
 					return result, err
 				}
@@ -258,7 +256,9 @@ func Repair(projectRoot string) (Result, []drift.Status, error) {
 		return Result{}, nil, err
 	}
 
-	statuses := drift.InspectMountState(projectRoot, state)
+	lm := linkmode.Detect()
+
+	statuses := drift.InspectMountState(projectRoot, state, lm)
 	result := Result{}
 
 	for _, status := range statuses {
@@ -271,18 +271,19 @@ func Repair(projectRoot string) (Result, []drift.Status, error) {
 			continue
 		case drift.IssueDriftedLink, drift.IssueMissingLink:
 			targetPath := filepath.Join(projectRoot, filepath.FromSlash(status.RelativePath))
-			if info, err := os.Lstat(targetPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			// Remove existing file/link if present
+			if _, err := os.Lstat(targetPath); err == nil {
 				if err := os.Remove(targetPath); err != nil {
 					return result, statuses, err
 				}
-			} else if err != nil && !os.IsNotExist(err) {
+			} else if !os.IsNotExist(err) {
 				return result, statuses, err
 			}
 
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return result, statuses, err
 			}
-			if err := os.Symlink(status.ExpectedSource, targetPath); err != nil {
+			if err := linkmode.Create(lm, status.ExpectedSource, targetPath); err != nil {
 				return result, statuses, err
 			}
 			if _, err := workspace.AddExclusion(projectRoot, status.RelativePath); err != nil {
@@ -292,7 +293,7 @@ func Repair(projectRoot string) (Result, []drift.Status, error) {
 		}
 	}
 
-	return result, drift.InspectMountState(projectRoot, state), nil
+	return result, drift.InspectMountState(projectRoot, state, lm), nil
 }
 
 func ensureUniqueTargets(entries []SourceEntry) error {

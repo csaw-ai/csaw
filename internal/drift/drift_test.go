@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/csaw-ai/csaw/internal/linkmode"
 	"github.com/csaw-ai/csaw/internal/workspace"
 )
 
@@ -46,7 +47,7 @@ func TestInspectMountStateClassifiesDrift(t *testing.T) {
 			SourceName:   "personal",
 			SourcePath:   expected,
 		}},
-	})
+	}, linkmode.Symlink)
 	if got, want := len(statuses), 1; got != want {
 		t.Fatalf("len(statuses) = %d, want %d", got, want)
 	}
