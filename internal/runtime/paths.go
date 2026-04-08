@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	DirName        = ".csaw"
-	SourcesDirName = "sources"
+	DirName         = ".csaw"
+	SourcesDirName  = "sources"
 	ContextsDirName = "contexts"
 	StateDirName    = "state"
 	ConfigFileName  = "config.yml"

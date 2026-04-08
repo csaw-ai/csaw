@@ -103,12 +103,12 @@ func TestExpandToolTargetsSkillsAndAgents(t *testing.T) {
 	}
 
 	expectedPresent := []string{
-		"AGENTS.md",                              // root file: kept at original path
-		".claude/rules/implementer.md",           // agent: projected to .claude/rules/
-		".claude/skills/code-review/SKILL.md",    // skill: projected to .claude/skills/
-		".agents/skills/code-review/SKILL.md",    // skill: projected to .agents/skills/
-		".claude/skills/go-patterns/SKILL.md",    // skill: projected to .claude/skills/
-		".agents/skills/go-patterns/SKILL.md",    // skill: projected to .agents/skills/
+		"AGENTS.md",                           // root file: kept at original path
+		".claude/rules/implementer.md",        // agent: projected to .claude/rules/
+		".claude/skills/code-review/SKILL.md", // skill: projected to .claude/skills/
+		".agents/skills/code-review/SKILL.md", // skill: projected to .agents/skills/
+		".claude/skills/go-patterns/SKILL.md", // skill: projected to .claude/skills/
+		".agents/skills/go-patterns/SKILL.md", // skill: projected to .agents/skills/
 	}
 	for _, path := range expectedPresent {
 		if !paths[path] {

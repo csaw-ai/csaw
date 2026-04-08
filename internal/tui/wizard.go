@@ -13,9 +13,9 @@ import (
 type StepKind int
 
 const (
-	StepSelect StepKind = iota // Choose from a list
-	StepInput                  // Free-text input
-	StepConfirm                // Yes/No
+	StepSelect  StepKind = iota // Choose from a list
+	StepInput                   // Free-text input
+	StepConfirm                 // Yes/No
 )
 
 // Step defines a single step in a wizard flow.
@@ -36,12 +36,12 @@ type WizardResult struct {
 }
 
 type wizardModel struct {
-	steps     []Step
-	current   int
-	results   map[string]string
-	aborted   bool
-	width     int
-	height    int
+	steps   []Step
+	current int
+	results map[string]string
+	aborted bool
+	width   int
+	height  int
 
 	// Step-specific state
 	selectCursor int
