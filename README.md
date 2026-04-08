@@ -84,13 +84,12 @@ go install github.com/csaw-ai/csaw/cmd/csaw@latest
 A source is any git repo (or local directory) containing agent files and skills.
 
 ```bash
-# Create a new registry
+# Add a team registry (auto-clones)
+csaw source add team git@github.com:your-org/ai-config.git
+
+# Or create your own
 csaw init ~/my-ai-config
 csaw source add personal ~/my-ai-config --priority 10
-
-# Or add an existing team registry
-csaw source add team git@github.com:your-org/ai-config.git
-csaw pull team
 ```
 
 ### 2. Mount a profile
@@ -207,8 +206,9 @@ csaw hide AGENTS.md    # add back → hidden from git
 | `csaw fork source/path` | Copy a file into another source for personal editing. |
 | `csaw show path` | Make a mounted file visible to git. |
 | `csaw hide path` | Hide a mounted file from git. |
-| `csaw source add name url` | Add a git or local source. |
+| `csaw source add name url` | Add a source (auto-clones remote). |
 | `csaw source remove name` | Remove a source. |
+| `csaw source clone name dir` | Clone a remote source locally for contributing. |
 | `csaw source list` | List configured sources. |
 | `csaw status` | Show mounted files, sources, stashed originals. |
 | `csaw version` | Print version. |

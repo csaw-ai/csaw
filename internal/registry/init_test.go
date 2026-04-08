@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,7 +32,7 @@ func TestInit(t *testing.T) {
 		t.Fatalf("Name = %q, want %q", result.Name, "my-config")
 	}
 
-	for _, sub := range []string{"agents", "skills"} {
+	for _, sub := range []string{"agents", "skills/commit-message"} {
 		info, err := os.Stat(filepath.Join(dir, sub))
 		if err != nil {
 			t.Fatalf("Stat(%s) error = %v", sub, err)
@@ -41,10 +42,19 @@ func TestInit(t *testing.T) {
 		}
 	}
 
-	for _, file := range []string{"csaw.yml", ".csawignore"} {
+	for _, file := range []string{"csaw.yml", ".csawignore", "agents/base.md", "skills/commit-message/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
 			t.Fatalf("Stat(%s) error = %v", file, err)
 		}
+	}
+
+	// Verify csaw.yml has a real default profile
+	content, err := os.ReadFile(filepath.Join(dir, "csaw.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "default:") {
+		t.Fatal("csaw.yml should contain a default profile")
 	}
 
 	if len(g.calls) != 1 || g.calls[0][1] != "init" {

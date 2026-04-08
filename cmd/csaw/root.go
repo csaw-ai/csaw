@@ -101,7 +101,7 @@ func newSourceCommand() *cobra.Command {
 		Short: "Manage configured csaw sources",
 	}
 
-	rootCmd.AddCommand(&cobra.Command{
+	addCmd := &cobra.Command{
 		Use:   "add <name> <url-or-path>",
 		Short: "Register a source in ~/.csaw/config.yml",
 		Args:  cobra.ExactArgs(2),
@@ -116,14 +116,29 @@ func newSourceCommand() *cobra.Command {
 				return err
 			}
 
+			priority, _ := cmd.Flags().GetInt("priority")
+			source.Priority = priority
+
 			if err := manager.Add(source); err != nil {
 				return err
 			}
 
 			output.Successf("registered source %q", source.Name)
+
+			// Auto-pull remote sources
+			if source.Kind == sources.KindRemote {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s cloning...\n", output.Faint("→"))
+				if err := manager.Pull(context.Background(), source.Name); err != nil {
+					return err
+				}
+				output.Successf("cloned %s", source.Name)
+			}
+
 			return nil
 		},
-	})
+	}
+	addCmd.Flags().Int("priority", 0, "source priority (higher wins on conflict)")
+	rootCmd.AddCommand(addCmd)
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "remove <name>",
@@ -176,6 +191,63 @@ func newSourceCommand() *cobra.Command {
 				)
 			}
 
+			return nil
+		},
+	})
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "clone <name> <dir>",
+		Short: "Clone a remote source to a local directory for contributing",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name, dir := args[0], args[1]
+
+			manager, err := newSourcesManager()
+			if err != nil {
+				return err
+			}
+
+			source, err := manager.Get(name)
+			if err != nil {
+				return err
+			}
+
+			if source.Kind != sources.KindRemote {
+				return fmt.Errorf("source %q is already local at %s", name, source.Path)
+			}
+
+			absDir, err := filepath.Abs(dir)
+			if err != nil {
+				return err
+			}
+
+			// Clone to the specified directory
+			if _, err := manager.Git.Run(context.Background(), ".", "clone", source.URL, absDir); err != nil {
+				return err
+			}
+
+			// Remove old managed checkout
+			oldCheckout := source.CheckoutPath(manager.Paths)
+			if _, err := os.Stat(oldCheckout); err == nil {
+				os.RemoveAll(oldCheckout)
+			}
+
+			// Update source to point to local clone
+			if err := manager.Remove(name); err != nil {
+				return err
+			}
+			localSource := sources.Source{
+				Name:     name,
+				Kind:     sources.KindLocal,
+				Path:     absDir,
+				Priority: source.Priority,
+			}
+			if err := manager.Add(localSource); err != nil {
+				return err
+			}
+
+			output.Successf("cloned %s to %s", name, absDir)
+			output.Infof("source %q now points to local clone", name)
 			return nil
 		},
 	})

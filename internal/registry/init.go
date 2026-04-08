@@ -13,17 +13,35 @@ type InitResult struct {
 	Name string
 }
 
-var starterProfile = `# Profiles define named sets of files to mount.
-# See: https://github.com/csaw-ai/csaw
-#
-# default:
-#   include:
-#     - agents/**
-#     - skills/**
+var starterProfile = `default:
+  description: Mount everything
+  include:
+    - agents/**
+    - skills/**
 `
 
 var starterIgnore = `# Patterns listed here are excluded from mounting by default.
 # Use --include-ignored to override.
+`
+
+var starterAgent = `# Agent Instructions
+
+Add your base coding preferences, conventions, and rules here.
+This file will be mounted as AGENTS.md in your projects.
+`
+
+var starterSkill = `---
+name: commit-message
+description: Write clear, conventional commit messages
+---
+
+When writing commit messages:
+
+- Use the imperative mood ("Add feature" not "Added feature")
+- Keep the subject line under 72 characters
+- Separate subject from body with a blank line
+- Use the body to explain what and why, not how
+- Reference issues and PRs where relevant
 `
 
 func Init(ctx context.Context, g git.Git, dir string, name string) (InitResult, error) {
@@ -40,23 +58,26 @@ func Init(ctx context.Context, g git.Git, dir string, name string) (InitResult, 
 		return InitResult{}, err
 	}
 
-	for _, sub := range []string{"agents", "skills"} {
+	for _, sub := range []string{"agents", "skills/commit-message"} {
 		if err := os.MkdirAll(filepath.Join(absDir, sub), 0o755); err != nil {
 			return InitResult{}, err
 		}
 	}
 
-	profilesPath := filepath.Join(absDir, "csaw.yml")
-	if _, err := os.Stat(profilesPath); os.IsNotExist(err) {
-		if err := os.WriteFile(profilesPath, []byte(starterProfile), 0o644); err != nil {
-			return InitResult{}, err
-		}
+	// Write starter files only if they don't exist
+	starters := map[string]string{
+		"csaw.yml":                       starterProfile,
+		".csawignore":                    starterIgnore,
+		"agents/base.md":                 starterAgent,
+		"skills/commit-message/SKILL.md": starterSkill,
 	}
 
-	ignorePath := filepath.Join(absDir, ".csawignore")
-	if _, err := os.Stat(ignorePath); os.IsNotExist(err) {
-		if err := os.WriteFile(ignorePath, []byte(starterIgnore), 0o644); err != nil {
-			return InitResult{}, err
+	for relPath, content := range starters {
+		fullPath := filepath.Join(absDir, relPath)
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+				return InitResult{}, err
+			}
 		}
 	}
 

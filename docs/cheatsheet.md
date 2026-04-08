@@ -6,16 +6,12 @@
 # Install
 uv tool install csaw
 
-# Create a new registry
+# Add a team source (auto-clones)
+csaw source add team git@github.com:org/ai-config.git
+
+# Or create your own registry
 csaw init ~/my-ai-config
 csaw source add personal ~/my-ai-config --priority 10
-
-# Add a team source (git repo)
-csaw source add team git@github.com:org/ai-config.git
-csaw pull team
-
-# Or a local directory
-csaw source add local ~/shared-config
 ```
 
 ## Mount
@@ -59,8 +55,9 @@ csaw hide AGENTS.md                     # hide from git again
 
 ```bash
 csaw source list                        # show configured sources
-csaw source add name url-or-path        # add a source
+csaw source add name url-or-path        # add a source (auto-clones remote)
 csaw source remove name                 # remove a source
+csaw source clone team ~/Developer/team # clone remote locally to contribute
 csaw pull                               # update all remote sources
 csaw pull team                          # update one source
 csaw push team -m "updated rules"       # push source changes
