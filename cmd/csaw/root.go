@@ -71,6 +71,7 @@ func newVersionCommand() *cobra.Command {
 
 func newInitCommand() *cobra.Command {
 	var name string
+	var adopt bool
 
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
@@ -82,15 +83,44 @@ func newInitCommand() *cobra.Command {
 				dir = args[0]
 			}
 
-			result, err := registry.Init(context.Background(), git.ExecGit{}, dir, name)
-			if err != nil {
-				return err
+			var initResult registry.InitResult
+			var adoptedFiles []string
+
+			if adopt {
+				projectRoot, err := runtime.FindRepoRoot(".")
+				if err != nil {
+					return fmt.Errorf("--adopt requires being inside a git repository")
+				}
+				adoptResult, err := registry.InitWithAdopt(context.Background(), git.ExecGit{}, dir, name, projectRoot)
+				if err != nil {
+					return err
+				}
+				initResult = adoptResult.InitResult
+				adoptedFiles = adoptResult.AdoptedFiles
+			} else {
+				var err error
+				initResult, err = registry.Init(context.Background(), git.ExecGit{}, dir, name)
+				if err != nil {
+					return err
+				}
 			}
 
-			output.Successf("initialized registry %q at %s", result.Name, result.Path)
+			output.Successf("initialized registry %q at %s", initResult.Name, initResult.Path)
+
+			if len(adoptedFiles) > 0 {
+				var lines []string
+				for _, f := range adoptedFiles {
+					lines = append(lines, fmt.Sprintf(" %s %s", output.SymbolOK, f))
+				}
+				fmt.Println(tui.ResultPanel(
+					fmt.Sprintf("adopted %d files", len(adoptedFiles)),
+					lines,
+					nil,
+				))
+			}
 
 			if !isInteractive() {
-				fmt.Fprintf(cmd.OutOrStdout(), "\n  %s\n", tui.HintLine("Next:", "csaw source add "+result.Name+" "+result.Path))
+				fmt.Fprintf(cmd.OutOrStdout(), "\n  %s\n", tui.HintLine("Next:", "csaw source add "+initResult.Name+" "+initResult.Path))
 				return nil
 			}
 
@@ -104,7 +134,7 @@ func newInitCommand() *cobra.Command {
 				},
 			})
 			if err != nil || wizResult.Aborted || wizResult.Values["register"] != "y" {
-				fmt.Fprintf(cmd.OutOrStdout(), "\n  %s\n", tui.HintLine("Later:", "csaw source add "+result.Name+" "+result.Path))
+				fmt.Fprintf(cmd.OutOrStdout(), "\n  %s\n", tui.HintLine("Later:", "csaw source add "+initResult.Name+" "+initResult.Path))
 				return nil
 			}
 
@@ -114,21 +144,22 @@ func newInitCommand() *cobra.Command {
 			}
 
 			source := sources.Source{
-				Name:     result.Name,
+				Name:     initResult.Name,
 				Kind:     sources.KindLocal,
-				Path:     result.Path,
+				Path:     initResult.Path,
 				Priority: 10,
 			}
 			if err := manager.Add(source); err != nil {
 				return err
 			}
 
-			output.Successf("registered source %q with priority 10", result.Name)
+			output.Successf("registered source %q with priority 10", initResult.Name)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "registry name (defaults to directory name)")
+	cmd.Flags().BoolVar(&adopt, "adopt", false, "adopt existing AI config files from the current project")
 	return cmd
 }
 
@@ -165,7 +196,7 @@ func newSourceCommand() *cobra.Command {
 			// Auto-pull remote sources
 			if source.Kind == sources.KindRemote {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s cloning...\n", output.Faint("→"))
-				if err := manager.Pull(context.Background(), source.Name); err != nil {
+				if err := manager.Pull(context.Background(), source.Name, false); err != nil {
 					return err
 				}
 				output.Successf("cloned %s", source.Name)
@@ -785,7 +816,9 @@ func newDiffCommand() *cobra.Command {
 }
 
 func newPullCommand() *cobra.Command {
-	return &cobra.Command{
+	var stash bool
+
+	cmd := &cobra.Command{
 		Use:   "pull [source]",
 		Short: "Clone or update configured remote sources",
 		Args:  cobra.MaximumNArgs(1),
@@ -796,12 +829,49 @@ func newPullCommand() *cobra.Command {
 			}
 
 			if len(args) == 1 {
-				return manager.Pull(context.Background(), args[0])
+				err := manager.Pull(context.Background(), args[0], stash)
+				var dirtyErr *sources.DirtySourceError
+				if errors.As(err, &dirtyErr) {
+					output.Warnf("%s has uncommitted changes", dirtyErr.Source)
+					fmt.Fprintf(cmd.OutOrStdout(), "\n  %s\n", tui.HintLine("Commit:", "cd "+dirtyErr.Path+" && git add -A && git commit -m \"...\""))
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", tui.HintLine("Or stash:", "csaw pull "+dirtyErr.Source+" --stash"))
+					return fmt.Errorf("pull aborted for %s", dirtyErr.Source)
+				}
+				if err != nil {
+					return err
+				}
+				output.Successf("pulled %s", args[0])
+				return nil
 			}
 
-			return manager.PullAll(context.Background())
+			results, err := manager.PullAll(context.Background(), stash)
+			if err != nil {
+				return err
+			}
+
+			var hasErrors bool
+			for _, r := range results {
+				var dirtyErr *sources.DirtySourceError
+				if r.Err == nil {
+					output.Successf("pulled %s", r.Source)
+				} else if errors.As(r.Err, &dirtyErr) {
+					output.Warnf("%s has uncommitted changes (use --stash)", r.Source)
+					hasErrors = true
+				} else {
+					output.Errorf("%s: %v", r.Source, r.Err)
+					hasErrors = true
+				}
+			}
+
+			if hasErrors {
+				return fmt.Errorf("some sources failed to pull")
+			}
+			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&stash, "stash", false, "stash uncommitted changes before pulling")
+	return cmd
 }
 
 func newPushCommand() *cobra.Command {

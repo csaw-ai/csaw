@@ -8,13 +8,7 @@ This file is the agent map, not the whole manual. Read the linked docs before ma
 
 ## Current Milestone
 
-The repo is in bootstrap plus Phase 1 foundation work:
-
-- establish the repo as the system of record for agents
-- keep the public CLI surface aligned with the product overview and architecture docs
-- build the mount engine incrementally from `dotghost` behavior, not by line-by-line porting
-
-The active plan is [`docs/exec-plans/active/bootstrap-foundation.md`](docs/exec-plans/active/bootstrap-foundation.md).
+The CLI is post-v0.2 with core mount engine, multi-source support, and distribution (PyPI, Homebrew, Scoop). Active work focuses on onboarding UX, cross-platform robustness, and workflow polish.
 
 ## Read First
 
@@ -46,12 +40,18 @@ Do not create a repo-root `TODO.md` backlog.
 - `cmd/csaw/`: CLI entrypoint and command wiring
 - `internal/runtime/`: shared constants, paths, normalization helpers
 - `internal/git/`: git execution interface
-- `internal/sources/`: global source config and registry checkout behavior
+- `internal/sources/`: source config, catalog, push, pull, worktree checkout
 - `internal/profiles/`: `csaw.yml` parsing and inheritance
-- `internal/mount/`: mount selection and glob planning
+- `internal/mount/`: mount selection, glob planning, priority resolution, tool projection
 - `internal/workspace/`: stash state, exclude file management, mounted-link discovery
 - `internal/drift/`: mounted link health inspection
+- `internal/linkmode/`: cross-platform linking (symlinks with hardlink fallback on Windows)
+- `internal/registry/`: registry scaffolding (`csaw init`, `--adopt`)
+- `internal/pinning/`: per-project source pinning to branches/tags
+- `internal/fork/`: file forking between sources
+- `internal/tui/`: bubbletea wizard, profile picker, multi-select, styled panels
 - `internal/inspect/`: summary and markdown preview rendering
+- `internal/output/`: terminal styling helpers
 - `internal/docs/`: repository validation helpers and tests
 - `docs/`: product, planning, decisions, and reference docs
 - `skills/`: repo-local skills using the `SKILL.md` convention
@@ -69,53 +69,53 @@ Do not create a repo-root `TODO.md` backlog.
 
 ## Git Workflow
 
-### Branching
+Solo development commits directly to `main`. For collaborative work or risky changes, use feature branches with PRs.
 
-All work happens on feature branches, never directly on `main`. Feature branches use
-descriptive names with a prefix:
+### Before committing
 
-```
-feat/player-profiles
-feat/data-layer-duckdb
-fix/shot-chart-dimensions
-```
+1. `gofmt -w .` — fix formatting
+2. `go test ./...` — all tests pass
+3. `go vet ./...` — no warnings
+4. Write a clear commit message explaining **why**, not just what
 
-### Merging to Main
 
-1. **Ensure checks pass** (lint, typecheck, tests)
-2. **Create a pull request**
-3. **Stop and tell the user** — give them the PR URL and wait for them to merge it
-4. When the user confirms the PR is merged:
-   - `git checkout main && git pull origin main`
-   - `git push origin --delete feat/branch-name`
-   - `git branch -d feat/branch-name`
+## Testing
 
-Never merge locally — always through a PR so the merge is tracked. Never merge the PR yourself —
-the user reviews and merges.
+### When to write tests
 
-### Starting a New Phase
+- **Every new function with logic** gets a test. If it has branching, error cases, or non-trivial behavior, test it.
+- **Every bug fix** gets a regression test that fails before the fix and passes after.
+- **New commands** need at least one test verifying the happy path. Interactive TUI flows are hard to test — at minimum, test the underlying logic functions they call.
+- **Refactors** must not break existing tests. If you change a function signature, update its callers AND its tests.
 
-1. `git checkout main && git pull`
-2. `git checkout -b feat/description`
-3. `git push -u origin feat/description` (on first commit)
+### When tests must pass
 
+- **Before every commit.** Run `go test ./...` and verify all tests pass. Do not commit with failing tests.
+- **Before every tag/release.** Run the full validation suite below. Do not tag if anything fails.
+- **In CI.** The CI workflow runs tests on Linux, macOS, and Windows. All three must pass.
+
+### Test style
+
+- Use real filesystems (`t.TempDir()`), not in-memory abstractions. Symlinks are a core mechanism and must be tested against real OS behavior.
+- Use `recordingGit` (in `internal/sources/catalog_test.go`) to mock git operations without hitting the network.
+- Table-driven tests for functions with multiple input/output cases.
+- No assertion libraries — use stdlib `testing` with `t.Fatalf`/`t.Errorf`.
 
 ## Validation Commands
 
 Run the smallest relevant set first, then the full baseline before closing work:
 
 ```bash
-make fmt
-make test
-make vet
-make docs-check
-go run ./cmd/csaw --help
+gofmt -l .          # must produce no output
+go vet ./...        # must pass
+go test ./...       # must pass
+go build ./...      # must compile
 ```
 
-Useful package-level test targets:
+Package-level test targets for faster iteration:
 
 ```bash
-go test ./internal/profiles ./internal/mount ./internal/workspace ./internal/docs
+go test ./internal/mount ./internal/sources ./internal/registry
 ```
 
 ## Skills
@@ -152,8 +152,8 @@ Do not tag without the user's approval. Do not skip the version bump rationale.
 
 ## Hard Constraints
 
-- Preserve the Phase 1 public command surface from the brief.
-- Preserve naming from the brief: `~/.csaw`, `csaw.yml`, `.csawignore`, `.csaw-stash`, `# csaw-managed`.
-- Prefer stdlib unless the brief explicitly justifies a dependency.
-- Add tests for profile resolution, glob behavior, path normalization, and workspace-state logic.
+- Preserve naming conventions: `~/.csaw`, `csaw.yml`, `.csawignore`, `.csaw-stash`, `# csaw-managed`.
+- Prefer stdlib unless explicitly justified. Current approved deps: cobra, lipgloss, bubbletea, bubbles, glamour, doublestar, yaml.v3.
+- All new logic must have tests. All tests must pass before commit.
 - Do not silently invent new configuration formats.
+- Cross-platform: all code must work on Linux, macOS, and Windows. Use `internal/linkmode` for symlink/hardlink abstraction.

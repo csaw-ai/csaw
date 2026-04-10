@@ -128,6 +128,48 @@ func TestIgnorePatternsFilterEntries(t *testing.T) {
 	}
 }
 
+func TestResolveConflictsByPriorityHigherWins(t *testing.T) {
+	entries := []SourceEntry{
+		{SourceName: "team", RelativePath: "AGENTS.md", Priority: 0},
+		{SourceName: "personal", RelativePath: "AGENTS.md", Priority: 10},
+	}
+	resolved, err := resolveConflictsByPriority(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("len = %d, want 1", len(resolved))
+	}
+	if resolved[0].SourceName != "personal" {
+		t.Fatalf("winner = %q, want personal", resolved[0].SourceName)
+	}
+}
+
+func TestResolveConflictsByPriorityTiedErrors(t *testing.T) {
+	entries := []SourceEntry{
+		{SourceName: "team", RelativePath: "AGENTS.md", Priority: 0},
+		{SourceName: "community", RelativePath: "AGENTS.md", Priority: 0},
+	}
+	_, err := resolveConflictsByPriority(entries)
+	if err == nil {
+		t.Fatal("expected error for tied priority")
+	}
+}
+
+func TestResolveConflictsByPriorityNoConflict(t *testing.T) {
+	entries := []SourceEntry{
+		{SourceName: "team", RelativePath: "AGENTS.md", Priority: 0},
+		{SourceName: "personal", RelativePath: "skills/foo/SKILL.md", Priority: 10},
+	}
+	resolved, err := resolveConflictsByPriority(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("len = %d, want 2", len(resolved))
+	}
+}
+
 func canCreateSymlink() (bool, string) {
 	root, err := os.MkdirTemp("", "csaw-symlink-*")
 	if err != nil {

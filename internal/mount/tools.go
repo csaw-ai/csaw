@@ -256,3 +256,101 @@ func containsSegment(path string, segment string) bool {
 	}
 	return false
 }
+
+// AdoptableFile describes a file in a project that can be adopted into a registry.
+type AdoptableFile struct {
+	ProjectPath  string // relative path in project (e.g., ".claude/skills/foo/SKILL.md")
+	RegistryPath string // where it should go in the registry (e.g., "skills/foo/SKILL.md")
+}
+
+// ScanAdoptableFiles scans a project directory for AI config files that can be
+// adopted into a csaw registry. This is the reverse of ExpandToolTargets —
+// it maps tool-native paths back to registry-standard paths.
+func ScanAdoptableFiles(projectRoot string) []AdoptableFile {
+	var files []AdoptableFile
+	seen := make(map[string]bool) // registry path → already found
+
+	// Root-level instruction files
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
+		path := filepath.Join(projectRoot, name)
+		if _, err := os.Stat(path); err == nil {
+			files = append(files, AdoptableFile{ProjectPath: name, RegistryPath: name})
+			seen[name] = true
+		}
+	}
+
+	// Skills from tool directories (reverse: .claude/skills/foo/SKILL.md → skills/foo/SKILL.md)
+	for _, tool := range ToolRegistry {
+		if tool.SkillsSubdir == "" {
+			continue
+		}
+		skillsDir := filepath.Join(projectRoot, tool.Dir, tool.SkillsSubdir)
+		entries, err := os.ReadDir(skillsDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			skillFile := filepath.Join(skillsDir, entry.Name(), "SKILL.md")
+			if _, err := os.Stat(skillFile); err != nil {
+				continue
+			}
+			registryPath := "skills/" + entry.Name() + "/SKILL.md"
+			if seen[registryPath] {
+				continue
+			}
+			seen[registryPath] = true
+			files = append(files, AdoptableFile{
+				ProjectPath:  filepath.ToSlash(filepath.Join(tool.Dir, tool.SkillsSubdir, entry.Name(), "SKILL.md")),
+				RegistryPath: registryPath,
+			})
+		}
+	}
+
+	// Agent instructions from tool rule directories (reverse: .claude/rules/base.md → agents/base.md)
+	for _, tool := range ToolRegistry {
+		if tool.RulesSubdir == "" {
+			continue
+		}
+		rulesDir := filepath.Join(projectRoot, tool.Dir, tool.RulesSubdir)
+		entries, err := os.ReadDir(rulesDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			registryPath := "agents/" + entry.Name()
+			if seen[registryPath] {
+				continue
+			}
+			seen[registryPath] = true
+			files = append(files, AdoptableFile{
+				ProjectPath:  filepath.ToSlash(filepath.Join(tool.Dir, tool.RulesSubdir, entry.Name())),
+				RegistryPath: registryPath,
+			})
+		}
+	}
+
+	// MCP configs (reverse: .mcp.json → mcp/claude-code.json)
+	for _, target := range KnownMCPTargets {
+		path := filepath.Join(projectRoot, filepath.FromSlash(target.ProjectPath))
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		registryPath := "mcp/" + target.RegistryFile
+		if seen[registryPath] {
+			continue
+		}
+		seen[registryPath] = true
+		files = append(files, AdoptableFile{
+			ProjectPath:  target.ProjectPath,
+			RegistryPath: registryPath,
+		})
+	}
+
+	return files
+}

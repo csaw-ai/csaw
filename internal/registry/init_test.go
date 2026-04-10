@@ -62,6 +62,56 @@ func TestInit(t *testing.T) {
 	}
 }
 
+func TestInitWithAdopt(t *testing.T) {
+	// Set up a fake project with AI config files
+	project := t.TempDir()
+	os.MkdirAll(filepath.Join(project, ".claude", "skills", "testing"), 0o755)
+	os.MkdirAll(filepath.Join(project, ".claude", "rules"), 0o755)
+	os.WriteFile(filepath.Join(project, "AGENTS.md"), []byte("team rules"), 0o644)
+	os.WriteFile(filepath.Join(project, ".claude", "skills", "testing", "SKILL.md"), []byte("test skill"), 0o644)
+	os.WriteFile(filepath.Join(project, ".claude", "rules", "go.md"), []byte("go rules"), 0o644)
+
+	registryDir := filepath.Join(t.TempDir(), "my-registry")
+	g := &recordingGit{}
+
+	result, err := InitWithAdopt(context.Background(), g, registryDir, "", project)
+	if err != nil {
+		t.Fatalf("InitWithAdopt() error = %v", err)
+	}
+
+	if len(result.AdoptedFiles) != 2 {
+		// AGENTS.md exists from starter (skipped), but skills/testing and agents/go.md should be adopted
+		t.Fatalf("AdoptedFiles = %v, want 2 files", result.AdoptedFiles)
+	}
+
+	// Verify skill was copied
+	content, err := os.ReadFile(filepath.Join(registryDir, "skills", "testing", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("adopted skill not found: %v", err)
+	}
+	if string(content) != "test skill" {
+		t.Fatalf("skill content = %q, want %q", string(content), "test skill")
+	}
+
+	// Verify agent rule was copied
+	content, err = os.ReadFile(filepath.Join(registryDir, "agents", "go.md"))
+	if err != nil {
+		t.Fatalf("adopted agent rule not found: %v", err)
+	}
+	if string(content) != "go rules" {
+		t.Fatalf("agent rule content = %q, want %q", string(content), "go rules")
+	}
+
+	// Verify csaw.yml was updated with adopted patterns
+	profileContent, err := os.ReadFile(filepath.Join(registryDir, "csaw.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(profileContent), "skills/**") {
+		t.Fatalf("csaw.yml should include skills/**, got:\n%s", string(profileContent))
+	}
+}
+
 func TestInitExistingDir(t *testing.T) {
 	dir := t.TempDir()
 	// Pre-create csaw.yml to verify it's not overwritten

@@ -134,6 +134,48 @@ func TestExpandToolTargetsSkillsAndAgents(t *testing.T) {
 	}
 }
 
+func TestScanAdoptableFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create various AI config files
+	os.MkdirAll(filepath.Join(dir, ".claude", "skills", "testing"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".claude", "rules"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".agents", "skills", "testing"), 0o755) // duplicate skill
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".claude", "skills", "testing", "SKILL.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".agents", "skills", "testing", "SKILL.md"), []byte("x"), 0o644) // same skill
+	os.WriteFile(filepath.Join(dir, ".claude", "rules", "go.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte("{}"), 0o644)
+
+	files := ScanAdoptableFiles(dir)
+
+	found := make(map[string]string)
+	for _, f := range files {
+		found[f.RegistryPath] = f.ProjectPath
+	}
+
+	// Should find AGENTS.md, one copy of the testing skill, the go rule, and mcp config
+	expected := []string{"AGENTS.md", "skills/testing/SKILL.md", "agents/go.md", "mcp/claude-code.json"}
+	for _, e := range expected {
+		if _, ok := found[e]; !ok {
+			t.Errorf("expected registry path %q not found (found: %v)", e, found)
+		}
+	}
+
+	// Duplicate skill should be deduplicated
+	if len(files) != len(expected) {
+		t.Errorf("len = %d, want %d (deduplication failed?)", len(files), len(expected))
+	}
+}
+
+func TestScanAdoptableFilesEmpty(t *testing.T) {
+	dir := t.TempDir()
+	files := ScanAdoptableFiles(dir)
+	if len(files) != 0 {
+		t.Fatalf("expected 0 adoptable files, got %d", len(files))
+	}
+}
+
 func TestExpandMCPTargetsProjectsToToolPaths(t *testing.T) {
 	entries := []SourceEntry{
 		{

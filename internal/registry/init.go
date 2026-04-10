@@ -2,10 +2,13 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/csaw-ai/csaw/internal/git"
+	"github.com/csaw-ai/csaw/internal/mount"
 )
 
 type InitResult struct {
@@ -121,4 +124,99 @@ func Init(ctx context.Context, g git.Git, dir string, name string) (InitResult, 
 	}
 
 	return InitResult{Path: absDir, Name: name}, nil
+}
+
+// AdoptResult extends InitResult with the list of files adopted from a project.
+type AdoptResult struct {
+	InitResult
+	AdoptedFiles []string // registry-relative paths of adopted files
+}
+
+// InitWithAdopt scaffolds a registry and adopts AI config files from a project.
+// It scans the project for skills, agent instructions, MCP configs, and root
+// instruction files, copies them into the registry, and generates a profile.
+func InitWithAdopt(ctx context.Context, g git.Git, dir string, name string, projectRoot string) (AdoptResult, error) {
+	initResult, err := Init(ctx, g, dir, name)
+	if err != nil {
+		return AdoptResult{}, err
+	}
+
+	adoptable := mount.ScanAdoptableFiles(projectRoot)
+	if len(adoptable) == 0 {
+		return AdoptResult{InitResult: initResult}, nil
+	}
+
+	var adopted []string
+	for _, file := range adoptable {
+		destPath := filepath.Join(initResult.Path, filepath.FromSlash(file.RegistryPath))
+
+		// Don't overwrite existing files (e.g., starter AGENTS.md)
+		if _, err := os.Stat(destPath); err == nil {
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return AdoptResult{}, err
+		}
+
+		srcPath := filepath.Join(projectRoot, filepath.FromSlash(file.ProjectPath))
+		content, err := os.ReadFile(srcPath)
+		if err != nil {
+			return AdoptResult{}, err
+		}
+		if err := os.WriteFile(destPath, content, 0o644); err != nil {
+			return AdoptResult{}, err
+		}
+
+		adopted = append(adopted, file.RegistryPath)
+	}
+
+	// Generate a profile covering all adopted files
+	if len(adopted) > 0 {
+		profileContent := generateAdoptProfile(adopted)
+		profilePath := filepath.Join(initResult.Path, "csaw.yml")
+		if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
+			return AdoptResult{}, err
+		}
+	}
+
+	return AdoptResult{InitResult: initResult, AdoptedFiles: adopted}, nil
+}
+
+func generateAdoptProfile(files []string) string {
+	// Collect top-level directory patterns
+	patterns := make(map[string]bool)
+	for _, f := range files {
+		parts := strings.SplitN(f, "/", 2)
+		if len(parts) == 1 {
+			// Root file like AGENTS.md
+			patterns[f] = true
+		} else {
+			// Directory like skills/foo/SKILL.md → skills/**
+			patterns[parts[0]+"/**"] = true
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("default:\n")
+	b.WriteString("  description: Adopted from project\n")
+	b.WriteString("  include:\n")
+
+	sorted := make([]string, 0, len(patterns))
+	for p := range patterns {
+		sorted = append(sorted, p)
+	}
+	// Sort for deterministic output
+	for i := 0; i < len(sorted); i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[i] > sorted[j] {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+	for _, p := range sorted {
+		fmt.Fprintf(&b, "    - %s\n", p)
+	}
+
+	return b.String()
 }

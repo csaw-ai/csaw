@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,5 +131,109 @@ func TestPushNothingToPush(t *testing.T) {
 	err := manager.Push(context.Background(), "team", "test commit")
 	if err != ErrNothingToPush {
 		t.Fatalf("Push() error = %v, want ErrNothingToPush", err)
+	}
+}
+
+func TestPullDirtySourceError(t *testing.T) {
+	root := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(root, ".csaw"))
+
+	sourceDir := filepath.Join(paths.Sources, "team")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	git := &recordingGit{
+		outputs: map[string]string{
+			joinArgs([]string{"status", "--porcelain"}): " M AGENTS.md",
+		},
+	}
+	manager := Manager{Paths: paths, Git: git}
+	if err := manager.Add(Source{Name: "team", Kind: KindRemote, URL: "git@example.com:org/repo.git"}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := manager.Pull(context.Background(), "team", false)
+	var dirtyErr *DirtySourceError
+	if !errors.As(err, &dirtyErr) {
+		t.Fatalf("Pull() error = %v, want DirtySourceError", err)
+	}
+	if dirtyErr.Source != "team" {
+		t.Fatalf("DirtySourceError.Source = %q, want %q", dirtyErr.Source, "team")
+	}
+}
+
+func TestPullDirtyWithStash(t *testing.T) {
+	root := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(root, ".csaw"))
+
+	sourceDir := filepath.Join(paths.Sources, "team")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	git := &recordingGit{
+		outputs: map[string]string{
+			joinArgs([]string{"status", "--porcelain"}): " M AGENTS.md",
+		},
+	}
+	manager := Manager{Paths: paths, Git: git}
+	if err := manager.Add(Source{Name: "team", Kind: KindRemote, URL: "git@example.com:org/repo.git"}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := manager.Pull(context.Background(), "team", true)
+	if err != nil {
+		t.Fatalf("Pull(stash=true) error = %v", err)
+	}
+
+	// Should have called: status, stash, pull, stash pop
+	var commands []string
+	for _, call := range git.calls {
+		if len(call) > 1 {
+			commands = append(commands, call[1])
+		}
+	}
+
+	hasStash := false
+	hasPull := false
+	for _, cmd := range commands {
+		if cmd == "stash" {
+			hasStash = true
+		}
+		if cmd == "pull" {
+			hasPull = true
+		}
+	}
+	if !hasStash {
+		t.Error("expected stash command")
+	}
+	if !hasPull {
+		t.Error("expected pull command")
+	}
+}
+
+func TestPullCleanSource(t *testing.T) {
+	root := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(root, ".csaw"))
+
+	sourceDir := filepath.Join(paths.Sources, "team")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	git := &recordingGit{
+		outputs: map[string]string{
+			joinArgs([]string{"status", "--porcelain"}): "",
+		},
+	}
+	manager := Manager{Paths: paths, Git: git}
+	if err := manager.Add(Source{Name: "team", Kind: KindRemote, URL: "git@example.com:org/repo.git"}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := manager.Pull(context.Background(), "team", false)
+	if err != nil {
+		t.Fatalf("Pull() error = %v", err)
 	}
 }

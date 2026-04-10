@@ -178,7 +178,19 @@ func (m Manager) Get(name string) (Source, error) {
 	return Source{}, fmt.Errorf("source %q not found", name)
 }
 
-func (m Manager) Pull(ctx context.Context, name string) error {
+// DirtySourceError is returned when a source has uncommitted changes that
+// prevent pulling. It provides the source name and checkout path so the
+// command layer can display actionable guidance.
+type DirtySourceError struct {
+	Source string
+	Path   string
+}
+
+func (e *DirtySourceError) Error() string {
+	return fmt.Sprintf("source %q has uncommitted changes at %s", e.Source, e.Path)
+}
+
+func (m Manager) Pull(ctx context.Context, name string, stash bool) error {
 	source, err := m.Get(name)
 	if err != nil {
 		return err
@@ -198,23 +210,47 @@ func (m Manager) Pull(ctx context.Context, name string) error {
 		return err
 	}
 
+	// Check for uncommitted changes before pulling
+	status, err := m.Git.Run(ctx, checkout, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	dirty := strings.TrimSpace(status) != ""
+
+	if dirty && !stash {
+		return &DirtySourceError{Source: name, Path: checkout}
+	}
+
+	if dirty {
+		if _, err := m.Git.Run(ctx, checkout, "stash"); err != nil {
+			return err
+		}
+		defer m.Git.Run(ctx, checkout, "stash", "pop")
+	}
+
 	_, err = m.Git.Run(ctx, checkout, "pull", "--ff-only")
 	return err
 }
 
-func (m Manager) PullAll(ctx context.Context) error {
+// PullResult tracks the outcome of pulling a single source.
+type PullResult struct {
+	Source string
+	Err    error
+}
+
+func (m Manager) PullAll(ctx context.Context, stash bool) ([]PullResult, error) {
 	cfg, err := m.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	var results []PullResult
 	for _, source := range cfg.Sources {
-		if err := m.Pull(ctx, source.Name); err != nil {
-			return err
-		}
+		err := m.Pull(ctx, source.Name, stash)
+		results = append(results, PullResult{Source: source.Name, Err: err})
 	}
 
-	return nil
+	return results, nil
 }
 
 func isLocalPath(value string) bool {
