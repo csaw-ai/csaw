@@ -30,7 +30,7 @@ func TestFork(t *testing.T) {
 		{Name: "personal", Root: personalDir},
 	}
 
-	result, err := Fork("team/agents/base.md", "personal", catalog)
+	result, err := Fork("team/agents/base.md", "personal", catalog, nil)
 	if err != nil {
 		t.Fatalf("Fork() error = %v", err)
 	}
@@ -53,7 +53,7 @@ func TestForkMissingSource(t *testing.T) {
 		{Name: "personal", Root: t.TempDir()},
 	}
 
-	_, err := Fork("nonexistent/agents/base.md", "personal", catalog)
+	_, err := Fork("nonexistent/agents/base.md", "personal", catalog, nil)
 	if err == nil {
 		t.Fatal("expected error for missing source")
 	}
@@ -65,7 +65,7 @@ func TestForkMissingFile(t *testing.T) {
 		{Name: "personal", Root: t.TempDir()},
 	}
 
-	_, err := Fork("team/agents/missing.md", "personal", catalog)
+	_, err := Fork("team/agents/missing.md", "personal", catalog, nil)
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -76,8 +76,29 @@ func TestForkSameSource(t *testing.T) {
 		{Name: "team", Root: t.TempDir()},
 	}
 
-	_, err := Fork("team/agents/base.md", "team", catalog)
+	_, err := Fork("team/agents/base.md", "team", catalog, nil)
 	if err == nil {
 		t.Fatal("expected error when source == target")
+	}
+}
+
+func TestForkProtectedRefused(t *testing.T) {
+	root := t.TempDir()
+	teamDir := filepath.Join(root, "team")
+	personalDir := filepath.Join(root, "personal")
+
+	os.MkdirAll(filepath.Join(teamDir, "agents"), 0o755)
+	os.MkdirAll(personalDir, 0o755)
+	os.WriteFile(filepath.Join(teamDir, "agents", "base.md"), []byte("x"), 0o644)
+
+	catalog := []sources.CatalogSource{
+		{Name: "team", Root: teamDir},
+		{Name: "personal", Root: personalDir},
+	}
+	protected := map[string]bool{"team/agents/base.md": true}
+
+	_, err := Fork("team/agents/base.md", "personal", catalog, protected)
+	if err == nil {
+		t.Fatal("expected fork to be refused for protected file")
 	}
 }

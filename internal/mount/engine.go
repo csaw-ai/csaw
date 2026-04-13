@@ -306,11 +306,33 @@ func resolveConflictsByPriority(entries []SourceEntry) ([]SourceEntry, error) {
 
 	resolved := make([]SourceEntry, 0, len(entries))
 	var problems []string
+	var protectionViolations []string
 
 	for _, entry := range entries {
 		group := groups[entry.RelativePath]
 		if len(group) < 2 {
 			resolved = append(resolved, entry)
+			continue
+		}
+
+		// If any entry in the group is protected, the protected one always wins
+		// (regardless of priority). Protection overrides priority.
+		var protected *SourceEntry
+		for i := range group {
+			if group[i].Protected {
+				if protected != nil && protected.SourceName != group[i].SourceName {
+					// Two different sources both protect the same path — hard error
+					protectionViolations = append(protectionViolations,
+						fmt.Sprintf("%s (protected by both %s and %s)",
+							entry.RelativePath, protected.SourceName, group[i].SourceName))
+				}
+				protected = &group[i]
+			}
+		}
+		if protected != nil {
+			if entry.SourceName == protected.SourceName {
+				resolved = append(resolved, *protected)
+			}
 			continue
 		}
 
@@ -342,21 +364,31 @@ func resolveConflictsByPriority(entries []SourceEntry) ([]SourceEntry, error) {
 		}
 	}
 
+	if len(protectionViolations) > 0 {
+		sort.Strings(protectionViolations)
+		deduped := dedupeStrings(protectionViolations)
+		return nil, fmt.Errorf("protection conflict; multiple sources protect the same path: %s", strings.Join(deduped, "; "))
+	}
+
 	if len(problems) > 0 {
 		sort.Strings(problems)
-		// Deduplicate problem strings (each conflict is reported once per group member)
-		deduped := problems[:0]
-		seen := make(map[string]bool)
-		for _, p := range problems {
-			if !seen[p] {
-				seen[p] = true
-				deduped = append(deduped, p)
-			}
-		}
+		deduped := dedupeStrings(problems)
 		return nil, fmt.Errorf("ambiguous mount selection; multiple sources with equal priority provide the same target path: %s\nUse source priority to resolve: csaw source add <name> <url> --priority <n>", strings.Join(deduped, "; "))
 	}
 
 	return resolved, nil
+}
+
+func dedupeStrings(values []string) []string {
+	seen := make(map[string]bool)
+	out := values[:0]
+	for _, v := range values {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func filterMountedStateEntries(entries []workspace.MountedStateEntry, selection Selection) ([]workspace.MountedStateEntry, error) {

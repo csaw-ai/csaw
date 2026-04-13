@@ -32,6 +32,7 @@ type SourceEntry struct {
 	QualifiedPath string
 	FullPath      string
 	Priority      int
+	Protected     bool
 }
 
 func NewPlanner() Planner {

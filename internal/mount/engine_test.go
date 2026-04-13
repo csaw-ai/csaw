@@ -156,6 +156,32 @@ func TestResolveConflictsByPriorityTiedErrors(t *testing.T) {
 	}
 }
 
+func TestResolveConflictsProtectedWinsOverPriority(t *testing.T) {
+	// Even with higher priority on personal, the team's protected file wins.
+	entries := []SourceEntry{
+		{SourceName: "team", RelativePath: "AGENTS.md", Priority: 0, Protected: true},
+		{SourceName: "personal", RelativePath: "AGENTS.md", Priority: 100},
+	}
+	resolved, err := resolveConflictsByPriority(entries)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 1 || resolved[0].SourceName != "team" {
+		t.Fatalf("protected team file should win; got %v", resolved)
+	}
+}
+
+func TestResolveConflictsTwoSourcesProtectSamePathErrors(t *testing.T) {
+	entries := []SourceEntry{
+		{SourceName: "team", RelativePath: "AGENTS.md", Protected: true},
+		{SourceName: "community", RelativePath: "AGENTS.md", Protected: true},
+	}
+	_, err := resolveConflictsByPriority(entries)
+	if err == nil {
+		t.Fatal("expected protection conflict error")
+	}
+}
+
 func TestResolveConflictsByPriorityNoConflict(t *testing.T) {
 	entries := []SourceEntry{
 		{SourceName: "team", RelativePath: "AGENTS.md", Priority: 0},

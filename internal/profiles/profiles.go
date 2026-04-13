@@ -25,9 +25,15 @@ type Resolver interface {
 	All() (map[string]Profile, error)
 }
 
+// SourcePolicy holds source-level policy from the reserved "csaw" key in csaw.yml.
+type SourcePolicy struct {
+	Protected []string
+}
+
 type FileResolver struct {
 	file        string
 	definitions map[string]definition
+	policy      SourcePolicy
 }
 
 type definition struct {
@@ -49,6 +55,13 @@ func NewFileResolver(file string) (*FileResolver, error) {
 		return nil, err
 	}
 
+	// Extract source-level policy from reserved "csaw" key
+	var policy SourcePolicy
+	if csawBlock, ok := raw["csaw"]; ok {
+		policy = extractSourcePolicy(csawBlock)
+		delete(raw, "csaw")
+	}
+
 	definitions := make(map[string]definition, len(raw))
 	for name, value := range raw {
 		definition, err := normalizeDefinition(name, value)
@@ -58,7 +71,48 @@ func NewFileResolver(file string) (*FileResolver, error) {
 		definitions[name] = definition
 	}
 
-	return &FileResolver{file: file, definitions: definitions}, nil
+	return &FileResolver{file: file, definitions: definitions, policy: policy}, nil
+}
+
+// Policy returns the source-level policy (protected files, etc.).
+func (r *FileResolver) Policy() SourcePolicy {
+	return r.policy
+}
+
+// extractSourcePolicy parses the "csaw" block in csaw.yml.
+func extractSourcePolicy(value any) SourcePolicy {
+	policy := SourcePolicy{}
+	block, ok := toStringMap(value)
+	if !ok {
+		return policy
+	}
+	if protected, ok := block["protected"]; ok {
+		if list, ok := protected.([]any); ok {
+			for _, item := range list {
+				if s, ok := item.(string); ok {
+					policy.Protected = append(policy.Protected, s)
+				}
+			}
+		}
+	}
+	return policy
+}
+
+// toStringMap normalizes either map[string]any or map[any]any to map[string]any.
+func toStringMap(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case map[any]any:
+		result := make(map[string]any, len(typed))
+		for k, v := range typed {
+			if key, ok := k.(string); ok {
+				result[key] = v
+			}
+		}
+		return result, true
+	}
+	return nil, false
 }
 
 func (r *FileResolver) Resolve(name string) (Profile, error) {

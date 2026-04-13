@@ -13,6 +13,7 @@ import (
 	"github.com/NicholasCullenCooper/csaw/internal/linkmode"
 	"github.com/NicholasCullenCooper/csaw/internal/output"
 	"github.com/NicholasCullenCooper/csaw/internal/pinning"
+	"github.com/NicholasCullenCooper/csaw/internal/profiles"
 	"github.com/NicholasCullenCooper/csaw/internal/runtime"
 	"github.com/NicholasCullenCooper/csaw/internal/sources"
 	"github.com/NicholasCullenCooper/csaw/internal/workspace"
@@ -24,6 +25,8 @@ type Summary struct {
 	Sources     []sources.Source
 	Mounted     []drift.Status
 	Pins        []pinning.Pin
+	// Protected maps source name → list of protected relative paths in that source.
+	Protected map[string][]string
 }
 
 func BuildSummary(ctx context.Context, projectRoot string, paths runtime.Paths, manager sources.Manager) (Summary, error) {
@@ -52,12 +55,26 @@ func BuildSummary(ctx context.Context, projectRoot string, paths runtime.Paths, 
 
 	pinState, _ := pinning.Read(projectRoot)
 
+	// Load per-source protected paths
+	protected := map[string][]string{}
+	if catalog, err := manager.ExistingCatalog(); err == nil {
+		if resolver, err := profiles.NewCatalogResolver(paths, catalog); err == nil {
+			for sourceName, policy := range resolver.Policies() {
+				if sourceName == "" || len(policy.Protected) == 0 {
+					continue
+				}
+				protected[sourceName] = append([]string(nil), policy.Protected...)
+			}
+		}
+	}
+
 	return Summary{
 		ProjectRoot: projectRoot,
 		Paths:       paths,
 		Sources:     cfg.Sources,
 		Mounted:     mounted,
 		Pins:        pinState.Pins,
+		Protected:   protected,
 	}, nil
 }
 
@@ -104,8 +121,18 @@ func RenderSummary(summary Summary) string {
 			if ref, ok := pinMap[source.Name]; ok {
 				line += " " + output.Warn("[pinned → "+ref+"]")
 			}
+			if protected, ok := summary.Protected[source.Name]; ok && len(protected) > 0 {
+				line += " " + output.Warn(fmt.Sprintf("[%d protected]", len(protected)))
+			}
 
 			b.WriteString(line + "\n")
+
+			// List protected files indented under the source
+			if protected, ok := summary.Protected[source.Name]; ok {
+				for _, p := range protected {
+					b.WriteString(fmt.Sprintf("    %s %s\n", output.Warn("*"), output.Faint("protected: "+p)))
+				}
+			}
 		}
 	}
 

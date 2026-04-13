@@ -14,21 +14,40 @@ import (
 
 type CatalogResolver struct {
 	definitions map[string]definition
+	policies    map[string]SourcePolicy // source name → policy
 }
 
 func NewCatalogResolver(paths runtime.Paths, catalog []sources.CatalogSource) (*CatalogResolver, error) {
 	definitions := map[string]definition{}
+	policies := map[string]SourcePolicy{}
 
-	if err := loadDefinitionsInto(definitions, filepath.Join(paths.Root, runtime.ProfilesFile), ""); err != nil {
+	if err := loadDefinitionsInto(definitions, policies, filepath.Join(paths.Root, runtime.ProfilesFile), ""); err != nil {
 		return nil, err
 	}
 	for _, source := range catalog {
-		if err := loadDefinitionsInto(definitions, filepath.Join(source.Root, runtime.ProfilesFile), source.Name); err != nil {
+		if err := loadDefinitionsInto(definitions, policies, filepath.Join(source.Root, runtime.ProfilesFile), source.Name); err != nil {
 			return nil, err
 		}
 	}
 
-	return &CatalogResolver{definitions: definitions}, nil
+	return &CatalogResolver{definitions: definitions, policies: policies}, nil
+}
+
+// Policies returns the source-level policies by source name.
+func (r *CatalogResolver) Policies() map[string]SourcePolicy {
+	return r.policies
+}
+
+// ProtectedPaths returns a map of qualified paths (source/path) that are protected.
+func (r *CatalogResolver) ProtectedPaths() map[string]bool {
+	protected := make(map[string]bool)
+	for sourceName, policy := range r.policies {
+		for _, path := range policy.Protected {
+			qualified := sourceName + "/" + runtime.NormalizeRegistryPath(path)
+			protected[qualified] = true
+		}
+	}
+	return protected
 }
 
 func (r *CatalogResolver) Resolve(name string) (Profile, error) {
@@ -65,7 +84,7 @@ func (r *CatalogResolver) All() (map[string]Profile, error) {
 	return results, nil
 }
 
-func loadDefinitionsInto(target map[string]definition, file string, namespace string) error {
+func loadDefinitionsInto(target map[string]definition, policies map[string]SourcePolicy, file string, namespace string) error {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -77,6 +96,14 @@ func loadDefinitionsInto(target map[string]definition, file string, namespace st
 	var raw map[string]any
 	if err := yaml.Unmarshal([]byte(runtime.StripBOM(string(content))), &raw); err != nil {
 		return err
+	}
+
+	// Extract source-level policy from reserved "csaw" key
+	if csawBlock, ok := raw["csaw"]; ok {
+		if policies != nil {
+			policies[namespace] = extractSourcePolicy(csawBlock)
+		}
+		delete(raw, "csaw")
 	}
 
 	for name, value := range raw {

@@ -99,11 +99,14 @@ func collectMountEntries(manager sources.Manager, paths runtime.Paths, selection
 		}
 	}
 
+	// Always build resolver so we can read policies (protected paths)
+	resolver, err := profiles.NewCatalogResolver(paths, catalog)
+	if err != nil {
+		return nil, err
+	}
+	protectedPaths := resolver.ProtectedPaths()
+
 	if selection.Profile != "" {
-		resolver, err := profiles.NewCatalogResolver(paths, catalog)
-		if err != nil {
-			return nil, err
-		}
 		profile, err := resolver.Resolve(selection.Profile)
 		if err != nil {
 			return nil, err
@@ -127,6 +130,12 @@ func collectMountEntries(manager sources.Manager, paths runtime.Paths, selection
 			sourceEntries, err = mount.ApplyIgnore(sourceEntries, patterns)
 			if err != nil {
 				return nil, err
+			}
+		}
+		// Mark protected entries
+		for i := range sourceEntries {
+			if protectedPaths[sourceEntries[i].QualifiedPath] {
+				sourceEntries[i].Protected = true
 			}
 		}
 		entries = append(entries, sourceEntries...)

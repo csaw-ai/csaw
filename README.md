@@ -380,6 +380,32 @@ Back to main.
 
 ---
 
+## Team Governance: Protected Files
+
+A team can mark certain files as **protected** — files that should not be overridden by personal sources or forked for customization. Put this in the team registry's `csaw.yml`:
+
+```yaml
+csaw:
+  protected:
+    - AGENTS.md
+    - rules/security.md
+
+backend:
+  include:
+    - AGENTS.md
+    - rules/**
+```
+
+When a file is protected:
+
+- **Priority is bypassed.** If personal has priority 100 and team's `AGENTS.md` is protected, team's version wins regardless.
+- **Fork is refused.** `csaw fork team/AGENTS.md --into personal` returns an error.
+- **Protection is visible.** `csaw inspect` marks protected files with a `*` under the source.
+
+Protection is **advisory within csaw** — it prevents csaw's own mechanisms from bypassing team rules. A developer can still manually delete a symlink and write their own file in its place. csaw doesn't try to stop that. This is an open-source tool, not an enterprise MDM.
+
+> Future work: content-hash verification. csaw could record the SHA of each protected file at mount time and detect if someone replaces the symlink with a modified copy. `csaw check --strict` would fail the check. This isn't built yet — filed as tech debt.
+
 ## Forking a Team File
 
 You like the team's `AGENTS.md` but want to customize it. Fork it:

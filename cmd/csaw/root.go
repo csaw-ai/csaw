@@ -1250,7 +1250,16 @@ func newForkCommand() *cobra.Command {
 				return err
 			}
 
-			result, err := fork.Fork(args[0], into, catalog)
+			paths, err := runtime.ResolvePaths()
+			if err != nil {
+				return err
+			}
+			resolver, err := profiles.NewCatalogResolver(paths, catalog)
+			if err != nil {
+				return err
+			}
+
+			result, err := fork.Fork(args[0], into, catalog, resolver.ProtectedPaths())
 			if err != nil {
 				return err
 			}

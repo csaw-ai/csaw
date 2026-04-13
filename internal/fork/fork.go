@@ -20,7 +20,9 @@ type Result struct {
 // Fork copies a file from one source into another.
 // qualifiedPath is "source/relative/path" (e.g., "team/agents/base.md").
 // into is the target source name.
-func Fork(qualifiedPath string, into string, catalog []sources.CatalogSource) (Result, error) {
+// protectedPaths is a map of qualified paths the source has marked as protected;
+// forking a protected file is refused.
+func Fork(qualifiedPath string, into string, catalog []sources.CatalogSource, protectedPaths map[string]bool) (Result, error) {
 	parts := strings.SplitN(qualifiedPath, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return Result{}, fmt.Errorf("invalid qualified path %q: expected source/path", qualifiedPath)
@@ -29,6 +31,10 @@ func Fork(qualifiedPath string, into string, catalog []sources.CatalogSource) (R
 
 	if sourceName == into {
 		return Result{}, fmt.Errorf("source and target are the same: %s", sourceName)
+	}
+
+	if protectedPaths[qualifiedPath] {
+		return Result{}, fmt.Errorf("cannot fork %q: source %q marks this file as protected", qualifiedPath, sourceName)
 	}
 
 	var fromRoot, intoRoot string
