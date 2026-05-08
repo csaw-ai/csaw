@@ -18,6 +18,7 @@
 - `internal/registry`: registry scaffolding (`csaw init`)
 - `internal/pinning`: per-project source pinning to branches/tags
 - `internal/fork`: file forking between sources
+- `internal/audit`: project policy parsing and active-context audit checks
 - `internal/inspect`: summary rendering and markdown preview helpers
 - `internal/output`: terminal styling helpers shared across commands
 - `internal/docs`: repository validation helpers used by CI and local checks
@@ -49,6 +50,7 @@ Implemented now:
 - file forking between sources (`csaw fork`)
 - skill lifecycle promotion (`csaw promote` from `skills/experimental/` to `skills/`)
 - inspect and status summaries (sources with priority, pins, protected counts, mounted files grouped by kind)
+- local context audit (`csaw audit`) with `.csaw/policy.yml`, required sources, blocked sources, required kinds, strict mode, and JSON output
 - tool routing for Claude Code, Cursor, Codex, OpenCode, Windsurf
 - MCP config projection (`mcp/claude-code.json` → `.mcp.json`, etc.)
 - repository validation tests
@@ -58,7 +60,7 @@ Deferred:
 - richer layered provenance in inspect output (per-value source attribution beyond per-file)
 - structured context switching (MCP composition with merge semantics, env vars, model preferences)
 - trust model for third-party sources (signing, content-hash verification of protected files)
-- security audit (`csaw audit` for prompt-injection and exfil scanning)
+- content-security scanners for prompt-injection and exfiltration heuristics
 
 ## Design Rules
 

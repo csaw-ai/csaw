@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/NicholasCullenCooper/csaw/internal/audit"
 	"github.com/NicholasCullenCooper/csaw/internal/drift"
 	"github.com/NicholasCullenCooper/csaw/internal/fork"
 	"github.com/NicholasCullenCooper/csaw/internal/git"
@@ -45,6 +46,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newMountCommand())
 	cmd.AddCommand(newUnmountCommand())
 	cmd.AddCommand(newInspectCommand())
+	cmd.AddCommand(newAuditCommand())
 	cmd.AddCommand(newCheckCommand())
 	cmd.AddCommand(newUpdateCommand())
 	cmd.AddCommand(newDiffCommand())
@@ -793,6 +795,59 @@ func newInspectCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&sourceName, "source", "", "show details for a single configured source")
 
+	return cmd
+}
+
+func newAuditCommand() *cobra.Command {
+	var strict bool
+	var jsonOut bool
+
+	cmd := &cobra.Command{
+		Use:   "audit [path]",
+		Short: "Audit active AI workspace context against project policy",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := "."
+			if len(args) == 1 {
+				target = args[0]
+			}
+
+			projectRoot, err := runtime.FindRepoRoot(target)
+			if err != nil {
+				return err
+			}
+
+			paths, err := runtime.ResolvePaths()
+			if err != nil {
+				return err
+			}
+
+			report, err := audit.Run(projectRoot, paths)
+			if err != nil {
+				return err
+			}
+
+			if jsonOut {
+				content, err := audit.RenderJSON(report)
+				if err != nil {
+					return err
+				}
+				if _, err := cmd.OutOrStdout().Write(content); err != nil {
+					return err
+				}
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), audit.RenderText(report))
+			}
+
+			if report.Failed(strict) {
+				return errors.New(report.FailureSummary(strict))
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&strict, "strict", false, "fail on warnings as well as errors")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit a JSON audit report")
 	return cmd
 }
 

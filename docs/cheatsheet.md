@@ -41,6 +41,9 @@ csaw unmount agents/go.md               # unmount specific files
 ```bash
 csaw inspect                            # full state overview
 csaw inspect --source team              # browse a source
+csaw audit                              # verify active context against policy
+csaw audit --strict                     # fail on warnings and errors
+csaw audit --json                       # machine-readable report
 csaw status                             # quick summary
 csaw check                              # find broken links
 csaw diff AGENTS.md                     # compare mounted vs source
@@ -175,6 +178,8 @@ my-registry/
 **Priority** — When sources overlap, higher priority wins. Set with `--priority` on `source add`.
 
 **Protected files** — A source can mark files as `protected:` in its `csaw.yml`. Protected files bypass priority (always win) and refuse `csaw fork`. The mechanism behind team and client governance.
+
+**Project policy** — A project can declare `.csaw/policy.yml` with `required_sources`, `blocked_sources`, and `required_kinds`. `csaw audit` checks the active mounted context against that policy. `--strict` fails on warnings, including a missing policy.
 
 **Pinning** — Lock a source to a branch/tag per project with `csaw pin`. Uses git worktrees so other projects stay on the default branch.
 

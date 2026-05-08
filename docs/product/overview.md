@@ -24,6 +24,7 @@ You declare one or more **sources** — git repos or local directories containin
 - **Promote** experimental skills to stable when you're ready to share them.
 - **Mount selectively by kind** (agents, skills, rules, mcp, instructions).
 - **Inspect** the resolved state — which sources, which mounted files grouped by kind, what's protected, what's pinned, what's healthy.
+- **Audit** active context against `.csaw/policy.yml` for required sources, blocked sources, required kinds, and mount health.
 
 Update a source — every project sees the change instantly through the symlinks. Unmount, and originals stashed during mount are restored.
 
@@ -45,6 +46,7 @@ csaw treats AI workspace artifacts as five distinct kinds, each with its own con
 - **No hidden defaults.** `csaw inspect` shows the full resolved state — what's mounted, where it came from, which source, whether it's protected, whether it's healthy.
 - **Files, not formats.** csaw manages standard files (AGENTS.md, SKILL.md, plain markdown). Every file in a source is usable without csaw.
 - **Multi-source composition with provenance.** Layer team, client, personal, and community sources. Priority and protection make the policy explicit. Every value annotated with its origin.
+- **Local assurance, not hard enforcement.** `csaw audit` detects active context drift and policy violations; it does not sandbox the machine or prevent manual edits outside csaw.
 - **Cross-platform.** Linux, macOS, and Windows (junctions for directory symlinks).
 
 ## Where to learn more

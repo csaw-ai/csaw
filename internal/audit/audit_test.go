@@ -1,0 +1,190 @@
+package audit
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/NicholasCullenCooper/csaw/internal/linkmode"
+	"github.com/NicholasCullenCooper/csaw/internal/mount"
+	"github.com/NicholasCullenCooper/csaw/internal/runtime"
+	"github.com/NicholasCullenCooper/csaw/internal/workspace"
+)
+
+func TestLoadPolicyParsesGovernanceChecks(t *testing.T) {
+	project := t.TempDir()
+	writePolicy(t, project, `
+required_sources:
+  - team
+  - name: client
+    url: git@example.com:org/client-ai.git
+    ref: main
+blocked_sources:
+  - personal
+  - other-client-*
+required_kinds:
+  - instructions
+  - agents
+`)
+
+	policy, policyPath, found, err := LoadPolicy(project)
+	if err != nil {
+		t.Fatalf("LoadPolicy() error = %v", err)
+	}
+	if !found {
+		t.Fatal("LoadPolicy() found = false, want true")
+	}
+	if filepath.Base(policyPath) != PolicyFileName {
+		t.Fatalf("policy path = %q, want %s", policyPath, PolicyFileName)
+	}
+	if got, want := len(policy.RequiredSources), 2; got != want {
+		t.Fatalf("required sources = %d, want %d", got, want)
+	}
+	if policy.RequiredSources[1].Name != "client" || policy.RequiredSources[1].Ref != "main" {
+		t.Fatalf("object source requirement not parsed: %+v", policy.RequiredSources[1])
+	}
+	if got, want := policy.BlockedSources[1], "other-client-*"; got != want {
+		t.Fatalf("blocked source = %q, want %q", got, want)
+	}
+	if got, want := policy.RequiredKinds[1], mount.KindAgent; got != want {
+		t.Fatalf("required kind = %q, want %q", got, want)
+	}
+}
+
+func TestRunPassesWhenRequiredContextIsActive(t *testing.T) {
+	project := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
+	writePolicy(t, project, `
+required_sources:
+  - team
+blocked_sources:
+  - personal
+required_kinds:
+  - instructions
+`)
+	writeMountedFile(t, project, "AGENTS.md", "team", "instructions")
+
+	report, err := Run(project, paths)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if report.Failed(false) {
+		t.Fatalf("report should pass, findings: %+v", report.Findings)
+	}
+	assertFinding(t, report, "source.required.present", SeverityOK)
+	assertFinding(t, report, "source.blocked.clear", SeverityOK)
+	assertFinding(t, report, "kind.required.present", SeverityOK)
+}
+
+func TestRunFailsForMissingAndBlockedContext(t *testing.T) {
+	project := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
+	writePolicy(t, project, `
+required_sources:
+  - team
+blocked_sources:
+  - personal
+required_kinds:
+  - mcp
+`)
+	writeMountedFile(t, project, "AGENTS.md", "personal", "instructions")
+
+	report, err := Run(project, paths)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !report.Failed(false) {
+		t.Fatalf("report should fail, findings: %+v", report.Findings)
+	}
+	assertFinding(t, report, "source.required.missing", SeverityError)
+	assertFinding(t, report, "source.blocked.active", SeverityError)
+	assertFinding(t, report, "kind.required.missing", SeverityError)
+}
+
+func TestStrictModeFailsWarnings(t *testing.T) {
+	report := Report{
+		Findings: []Finding{
+			{ID: "policy.missing", Severity: SeverityWarn},
+		},
+	}
+
+	if report.Failed(false) {
+		t.Fatal("default mode should not fail warnings")
+	}
+	if !report.Failed(true) {
+		t.Fatal("strict mode should fail warnings")
+	}
+}
+
+func TestLoadPolicyRejectsInvalidBlockedSourceGlob(t *testing.T) {
+	project := t.TempDir()
+	writePolicy(t, project, `
+blocked_sources:
+  - "client-["
+`)
+
+	_, _, _, err := LoadPolicy(project)
+	if err == nil {
+		t.Fatal("LoadPolicy() error = nil, want invalid glob error")
+	}
+}
+
+func TestSourceMatchesGlob(t *testing.T) {
+	if !sourceMatches("client-*", "client-acme") {
+		t.Fatal("expected glob source match")
+	}
+	if sourceMatches("client-*", "personal") {
+		t.Fatal("unexpected glob source match")
+	}
+}
+
+func writePolicy(t *testing.T, project string, content string) {
+	t.Helper()
+	policyDir := filepath.Join(project, PolicyDirName)
+	if err := os.MkdirAll(policyDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(policy) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(policyDir, PolicyFileName), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(policy) error = %v", err)
+	}
+}
+
+func writeMountedFile(t *testing.T, project string, relPath string, sourceName string, content string) {
+	t.Helper()
+	source := filepath.Join(t.TempDir(), filepath.Base(relPath))
+	if err := os.WriteFile(source, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+
+	target := filepath.Join(project, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("MkdirAll(target) error = %v", err)
+	}
+	mode := linkmode.Detect()
+	if err := linkmode.Create(mode, source, target); err != nil {
+		t.Fatalf("Create link error = %v", err)
+	}
+
+	state := workspace.MountState{
+		Entries: []workspace.MountedStateEntry{
+			{
+				RelativePath: relPath,
+				SourceName:   sourceName,
+				SourcePath:   source,
+			},
+		},
+	}
+	if err := workspace.WriteMountState(project, state); err != nil {
+		t.Fatalf("WriteMountState() error = %v", err)
+	}
+}
+
+func assertFinding(t *testing.T, report Report, id string, severity Severity) {
+	t.Helper()
+	for _, finding := range report.Findings {
+		if finding.ID == id && finding.Severity == severity {
+			return
+		}
+	}
+	t.Fatalf("finding %s/%s not found in %+v", id, severity, report.Findings)
+}

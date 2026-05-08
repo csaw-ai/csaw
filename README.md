@@ -303,6 +303,37 @@ Protection is **advisory within csaw** — it prevents csaw's own mechanisms fro
 
 ---
 
+## Auditing Active Context
+
+Projects can declare local context requirements in `.csaw/policy.yml`:
+
+```yaml
+required_sources:
+  - client-acme
+  - team
+blocked_sources:
+  - personal-experimental
+  - other-client-*
+required_kinds:
+  - instructions
+  - rules
+  - mcp
+```
+
+Run audit before starting work, before handing off, or in local/CI checks:
+
+```bash
+csaw audit
+csaw audit --strict
+csaw audit --json
+```
+
+`csaw audit` checks active mount health, required sources, blocked source patterns, and required artifact kinds. Default mode exits nonzero on errors. `--strict` also exits nonzero on warnings, including a missing project policy.
+
+This is **local assurance**, not hard prevention. csaw can tell you Client A context is active and Client B context is mounted, but it does not sandbox your machine or stop a user from manually editing files.
+
+---
+
 ## Experimental Skills
 
 Working on a new skill? Put it in `skills/experimental/`:
@@ -609,6 +640,7 @@ Profiles support glob patterns and inheritance. `extends` pulls in everything fr
 | `csaw mount --restore` | Re-mount the previous selection. |
 | `csaw unmount [patterns]` | Remove mounted files, restore originals. |
 | `csaw inspect` | Full state: sources, mounts, priorities, pins. |
+| `csaw audit [path]` | Audit active context against `.csaw/policy.yml`. |
 | `csaw check` | Detect broken or drifted symlinks. |
 | `csaw update` | Repair drifted links. |
 | `csaw diff path` | Diff a mounted file against its source. |
@@ -634,6 +666,8 @@ Profiles support glob patterns and inheritance. `extends` pulls in everything fr
 | `--tools list` | mount | Target tools (e.g., `--tools claude,cursor`). |
 | `--restore` | mount | Re-mount previous selection. |
 | `--include-experimental` | mount | Include experimental skills (hidden by .csawignore). |
+| `--strict` | audit | Fail on warnings as well as errors. |
+| `--json` | audit | Emit a machine-readable audit report. |
 | `--adopt` | init | Import existing AI config from current project. |
 | `--stash` | pull | Stash uncommitted changes before pulling. |
 | `--priority n` | source add | Source priority (higher wins on conflict). |

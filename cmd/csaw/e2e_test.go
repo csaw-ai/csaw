@@ -336,6 +336,40 @@ func TestE2EMountKindFilter(t *testing.T) {
 	}
 }
 
+func TestE2EAuditStrictPassesWithPolicy(t *testing.T) {
+	env := newE2EEnv(t)
+
+	reg := env.createRegistry("reg", map[string]string{
+		"csaw.yml":  "default:\n  include:\n    - AGENTS.md\n",
+		"AGENTS.md": "instructions",
+	})
+
+	if err := os.MkdirAll(filepath.Join(env.projectDir, ".csaw"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.csaw) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(env.projectDir, ".csaw", "policy.yml"), []byte(`
+required_sources:
+  - reg
+blocked_sources:
+  - personal
+required_kinds:
+  - instructions
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(policy) error = %v", err)
+	}
+
+	env.run("source", "add", "reg", reg)
+	env.run("mount", "--profile", "reg/default")
+	out := env.run("audit", "--strict")
+
+	if !strings.Contains(out, "source.required.present") {
+		t.Fatalf("audit output should include required source finding, got: %s", out)
+	}
+	if !strings.Contains(out, "kind.required.present") {
+		t.Fatalf("audit output should include required kind finding, got: %s", out)
+	}
+}
+
 func TestE2EFork(t *testing.T) {
 	env := newE2EEnv(t)
 
