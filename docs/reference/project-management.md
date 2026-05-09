@@ -3,6 +3,7 @@
 ## System Of Record
 
 - GitHub Issues and one GitHub Project are the backlog and roadmap of record.
+- `docs/product/roadmap.md` is the public roadmap snapshot and should be reconciled with GitHub Issues when priorities change.
 - `docs/exec-plans/active/` is the execution context for complex in-flight work.
 - `docs/tech-debt-tracker.md` holds debt that should not block current delivery.
 

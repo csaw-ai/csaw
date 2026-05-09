@@ -52,6 +52,7 @@ csaw treats AI workspace artifacts as five distinct kinds, each with its own con
 ## Where to learn more
 
 - [README.md](../../README.md) — install, quick start, scenario-based walkthroughs, command reference.
+- [Roadmap](roadmap.md) — current release state, near-term priorities, and longer-term product tracks.
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) — package structure and interfaces.
 - [Cheat sheet](../cheatsheet.md) — concise command reference.
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — contributor workflow.

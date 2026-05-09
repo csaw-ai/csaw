@@ -3,6 +3,7 @@
 ## Core
 
 - [`product/overview.md`](product/overview.md)
+- [`product/roadmap.md`](product/roadmap.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
 - [`../AGENTS.md`](../AGENTS.md)
@@ -11,8 +12,9 @@
 
 ## Execution
 
-- [`exec-plans/active/bootstrap-foundation.md`](exec-plans/active/bootstrap-foundation.md)
 - [`exec-plans/completed/README.md`](exec-plans/completed/README.md)
+- [`exec-plans/completed/bootstrap-foundation.md`](exec-plans/completed/bootstrap-foundation.md)
+- [`exec-plans/completed/audit-policy.md`](exec-plans/completed/audit-policy.md)
 - [`tech-debt-tracker.md`](tech-debt-tracker.md)
 
 ## Decisions And Reference
