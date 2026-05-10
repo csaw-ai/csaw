@@ -46,7 +46,7 @@ csaw audit                              # verify active context against policy
 csaw audit --strict                     # fail on warnings and errors
 csaw audit --json                       # machine-readable report
 csaw status                             # quick summary
-csaw check                              # find broken links
+csaw check                              # find broken links and protected drift
 csaw diff AGENTS.md                     # compare mounted vs source
 ```
 
@@ -112,7 +112,7 @@ csaw init ~/my-ai-config --name myteam  # custom name
 ## Repair
 
 ```bash
-csaw check                              # detect drift
+csaw check                              # detect link drift and protected content drift
 csaw update                             # repair broken links
 ```
 

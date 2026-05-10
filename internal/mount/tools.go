@@ -286,6 +286,7 @@ func ExpandToolTargets(entries []SourceEntry, toolDirs []ToolDir) []SourceEntry 
 					QualifiedPath: entry.QualifiedPath + "→" + toolRelPath,
 					FullPath:      entry.FullPath,
 					Priority:      entry.Priority,
+					Protected:     entry.Protected,
 				})
 			}
 			continue
@@ -370,6 +371,8 @@ func expandMCPTargets(entries []SourceEntry) []SourceEntry {
 			RelativePath:  projectPath,
 			QualifiedPath: entry.QualifiedPath + "→" + projectPath,
 			FullPath:      entry.FullPath,
+			Priority:      entry.Priority,
+			Protected:     entry.Protected,
 		})
 	}
 	return expanded
@@ -395,6 +398,7 @@ func appendProjected(expanded []SourceEntry, entry SourceEntry, toolDirs []ToolD
 			QualifiedPath: entry.QualifiedPath + "→" + toolRelPath,
 			FullPath:      entry.FullPath,
 			Priority:      entry.Priority,
+			Protected:     entry.Protected,
 		})
 		mounted = true
 	}

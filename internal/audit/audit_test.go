@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NicholasCullenCooper/csaw/internal/drift"
 	"github.com/NicholasCullenCooper/csaw/internal/linkmode"
 	"github.com/NicholasCullenCooper/csaw/internal/mount"
 	"github.com/NicholasCullenCooper/csaw/internal/pinning"
@@ -161,6 +162,48 @@ required_kinds:
 	assertFinding(t, report, "kind.required.missing", SeverityError)
 }
 
+func TestRunFailsForProtectedContentDrift(t *testing.T) {
+	project := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
+	source := filepath.Join(t.TempDir(), "AGENTS.md")
+	target := filepath.Join(project, "AGENTS.md")
+	if err := os.WriteFile(source, []byte("approved"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	approvedHash, err := workspace.FileSHA256(source)
+	if err != nil {
+		t.Fatalf("FileSHA256() error = %v", err)
+	}
+	if err := linkmode.Create(linkmode.Detect(), source, target); err != nil {
+		t.Fatalf("Create link error = %v", err)
+	}
+	if err := os.WriteFile(source, []byte("changed"), 0o644); err != nil {
+		t.Fatalf("WriteFile(changed source) error = %v", err)
+	}
+	state := workspace.MountState{
+		Entries: []workspace.MountedStateEntry{{
+			RelativePath: "AGENTS.md",
+			SourceName:   "team",
+			SourcePath:   source,
+			Protected:    true,
+			SourceSHA256: approvedHash,
+		}},
+	}
+	if err := workspace.WriteMountState(project, state); err != nil {
+		t.Fatalf("WriteMountState() error = %v", err)
+	}
+
+	report, err := Run(project, paths)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !report.Failed(false) {
+		t.Fatalf("report should fail, findings: %+v", report.Findings)
+	}
+	assertFinding(t, report, "mount.unhealthy", SeverityError)
+	assertFindingDetail(t, report, "mount.unhealthy", drift.IssueProtectedContentDrift)
+}
+
 func TestStrictModeFailsWarnings(t *testing.T) {
 	report := Report{
 		Findings: []Finding{
@@ -313,4 +356,14 @@ func assertFinding(t *testing.T, report Report, id string, severity Severity) {
 		}
 	}
 	t.Fatalf("finding %s/%s not found in %+v", id, severity, report.Findings)
+}
+
+func assertFindingDetail(t *testing.T, report Report, id string, detail string) {
+	t.Helper()
+	for _, finding := range report.Findings {
+		if finding.ID == id && finding.Detail == detail {
+			return
+		}
+	}
+	t.Fatalf("finding %s with detail %q not found in %+v", id, detail, report.Findings)
 }

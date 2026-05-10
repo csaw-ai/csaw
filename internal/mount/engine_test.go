@@ -95,6 +95,58 @@ func TestApplyUnmountAndRestoreState(t *testing.T) {
 	}
 }
 
+func TestApplyRecordsProtectedSourceHash(t *testing.T) {
+	if canSymlink, reason := canCreateSymlink(); !canSymlink {
+		t.Skip(reason)
+	}
+
+	root := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(root, ".csaw"))
+	project := filepath.Join(root, "project")
+	sourceRoot := filepath.Join(root, "source")
+
+	if err := os.MkdirAll(filepath.Join(project, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(project) error = %v", err)
+	}
+	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll(source) error = %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceRoot, "AGENTS.md")
+	if err := os.WriteFile(sourceFile, []byte("approved"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	wantHash, err := workspace.FileSHA256(sourceFile)
+	if err != nil {
+		t.Fatalf("FileSHA256() error = %v", err)
+	}
+
+	_, err = Apply(project, paths, []SourceEntry{{
+		SourceName:    "team",
+		RelativePath:  "AGENTS.md",
+		QualifiedPath: "team/AGENTS.md",
+		FullPath:      sourceFile,
+		Protected:     true,
+	}}, staticResolver{action: ConflictOverwrite})
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	state, err := workspace.ReadMountState(project)
+	if err != nil {
+		t.Fatalf("ReadMountState() error = %v", err)
+	}
+	if got, want := len(state.Entries), 1; got != want {
+		t.Fatalf("len(state.Entries) = %d, want %d", got, want)
+	}
+	if !state.Entries[0].Protected {
+		t.Fatal("mounted state entry should be marked protected")
+	}
+	if state.Entries[0].SourceSHA256 != wantHash {
+		t.Fatalf("SourceSHA256 = %q, want %q", state.Entries[0].SourceSHA256, wantHash)
+	}
+}
+
 func TestIgnorePatternsFilterEntries(t *testing.T) {
 	root := t.TempDir()
 	sourceRoot := filepath.Join(root, "source")

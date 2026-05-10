@@ -22,6 +22,13 @@ The core product question is: why not just keep the context in the relevant repo
 - `csaw audit` with `.csaw/policy.yml`, required sources, blocked sources, required kinds, strict mode, and JSON output
 - distribution through GitHub Releases, Homebrew, Scoop, and PyPI
 
+Current `main` after `v0.4.0` also includes:
+
+- `csaw audit --init`
+- documented audit JSON finding contract
+- required source URL and project pin checks
+- protected-file SHA-256 verification in `check` and `audit`
+
 ## Idea Map
 
 The brainstormed product directions all fit somewhere, but they should not all become equal product bets.
@@ -187,6 +194,6 @@ This is useful only where development environment state intersects AI context. c
 
 The highest-leverage next implementation issue is:
 
-**Add protected-file hash verification.**
+**Add blocked path and blocked kind checks.**
 
-This turns protected files from composition-time policy into audit-time evidence, and it is the next concrete step toward client isolation without overstating enforcement.
+This lets client and team policies forbid higher-risk local context surfaces, especially MCP files or personal agents, without claiming hard runtime enforcement.

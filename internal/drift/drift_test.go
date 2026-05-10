@@ -56,6 +56,63 @@ func TestInspectMountStateClassifiesDrift(t *testing.T) {
 	}
 }
 
+func TestInspectMountStateDetectsProtectedContentDrift(t *testing.T) {
+	if canSymlink, reason := canCreateSymlink(); !canSymlink {
+		t.Skip(reason)
+	}
+
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	sourceDir := filepath.Join(root, "source")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("MkdirAll(project) error = %v", err)
+	}
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(source) error = %v", err)
+	}
+
+	source := filepath.Join(sourceDir, "AGENTS.md")
+	target := filepath.Join(project, "AGENTS.md")
+	if err := os.WriteFile(source, []byte("approved"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	approvedHash, err := workspace.FileSHA256(source)
+	if err != nil {
+		t.Fatalf("FileSHA256() error = %v", err)
+	}
+	if err := os.Symlink(source, target); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if err := os.WriteFile(source, []byte("changed"), 0o644); err != nil {
+		t.Fatalf("WriteFile(changed source) error = %v", err)
+	}
+
+	statuses := InspectMountState(project, workspace.MountState{
+		Entries: []workspace.MountedStateEntry{{
+			RelativePath: "AGENTS.md",
+			SourceName:   "team",
+			SourcePath:   source,
+			Protected:    true,
+			SourceSHA256: approvedHash,
+		}},
+	}, linkmode.Symlink)
+	if got, want := len(statuses), 1; got != want {
+		t.Fatalf("len(statuses) = %d, want %d", got, want)
+	}
+	if statuses[0].Healthy {
+		t.Fatalf("protected content drift should be unhealthy: %+v", statuses[0])
+	}
+	if statuses[0].Issue != IssueProtectedContentDrift {
+		t.Fatalf("Issue = %q, want %q", statuses[0].Issue, IssueProtectedContentDrift)
+	}
+	if statuses[0].ExpectedHash != approvedHash {
+		t.Fatalf("ExpectedHash = %q, want %q", statuses[0].ExpectedHash, approvedHash)
+	}
+	if statuses[0].ActualHash == "" || statuses[0].ActualHash == approvedHash {
+		t.Fatalf("ActualHash = %q, want changed hash", statuses[0].ActualHash)
+	}
+}
+
 func canCreateSymlink() (bool, string) {
 	root, err := os.MkdirTemp("", "csaw-drift-*")
 	if err != nil {

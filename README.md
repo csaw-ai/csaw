@@ -294,12 +294,11 @@ When a file is protected:
 - **Priority is bypassed.** Even if personal has priority 100, the protected source wins for that file.
 - **Fork is refused.** `csaw fork client-acme/AGENTS.md --into personal` returns an error.
 - **Protection is visible.** `csaw inspect` marks protected files with a `*` under the source.
+- **Protection is verified.** csaw records a SHA-256 hash for protected mounts and `csaw check` / `csaw audit` detect content drift.
 
 This is the mechanism for team and client governance — let a team or client's source publish required files, layer personal preferences on top, and csaw won't let the personal layer break the protected ones.
 
-Protection is **advisory within csaw** — it prevents csaw's own mechanisms from bypassing the rules. A developer can still manually delete a symlink and write their own file in its place. csaw doesn't try to stop that. This is an open-source tool, not an enterprise MDM.
-
-> Future work: content-hash verification. csaw could record the SHA of each protected file at mount time and detect if someone replaces the symlink with a modified copy. `csaw check --strict` would fail the check. Tracked as tech debt.
+Protection is **local assurance, not hard enforcement**. csaw prevents its own mechanisms from bypassing protected files and detects if protected mounted content no longer matches the mount-time hash. Remount to accept an intentional protected source update. csaw does not sandbox the machine or stop a user from manually editing files outside csaw.
 
 ---
 
@@ -336,7 +335,7 @@ csaw audit --strict
 csaw audit --json
 ```
 
-`csaw audit` checks active mount health, required sources, required source URLs and project pins, blocked source patterns, and required artifact kinds. Default mode exits nonzero on errors. `--strict` also exits nonzero on warnings, including a missing project policy.
+`csaw audit` checks active mount health, protected file content drift, required sources, required source URLs and project pins, blocked source patterns, and required artifact kinds. Default mode exits nonzero on errors. `--strict` also exits nonzero on warnings, including a missing project policy.
 
 The `ref` field checks the project pin set by `csaw pin client-acme@main`; it is not inferred from the source checkout's current branch. The JSON output is documented in [docs/reference/audit-json.md](docs/reference/audit-json.md).
 
@@ -678,7 +677,7 @@ Profiles support glob patterns and inheritance. `extends` pulls in everything fr
 | `csaw inspect` | Full state: sources, mounts, priorities, pins. |
 | `csaw audit [path]` | Audit active context against `.csaw/policy.yml`. |
 | `csaw audit --init [path]` | Write a starter `.csaw/policy.yml`. |
-| `csaw check` | Detect broken or drifted symlinks. |
+| `csaw check` | Detect broken links, drifted links, and protected content drift. |
 | `csaw update` | Repair drifted links. |
 | `csaw diff path` | Diff a mounted file against its source. |
 | `csaw pull [source]` | Pull latest from remote sources. `--stash` for dirty state. |

@@ -191,6 +191,34 @@ func TestExpandToolTargetsAllProjections(t *testing.T) {
 	}
 }
 
+func TestExpandToolTargetsPreservesProtectedMetadata(t *testing.T) {
+	toolDirs := []ToolDir{
+		{Dir: ".claude", SkillsSubdir: "skills", RulesSubdir: "rules", AgentsSubdir: "agents"},
+	}
+
+	entries := []SourceEntry{
+		{
+			SourceName:    "team",
+			RelativePath:  "agents/reviewer.md",
+			QualifiedPath: "team/agents/reviewer.md",
+			FullPath:      "/registry/agents/reviewer.md",
+			Priority:      7,
+			Protected:     true,
+		},
+	}
+
+	expanded := ExpandToolTargets(entries, toolDirs)
+	if got, want := len(expanded), 1; got != want {
+		t.Fatalf("len(expanded) = %d, want %d", got, want)
+	}
+	if !expanded[0].Protected {
+		t.Fatal("projected entry should remain protected")
+	}
+	if expanded[0].Priority != 7 {
+		t.Fatalf("projected priority = %d, want 7", expanded[0].Priority)
+	}
+}
+
 func TestScanAdoptableFiles(t *testing.T) {
 	dir := t.TempDir()
 

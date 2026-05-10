@@ -20,6 +20,8 @@ type MountedStateEntry struct {
 	RelativePath string `json:"relative_path"`
 	SourceName   string `json:"source_name"`
 	SourcePath   string `json:"source_path"`
+	Protected    bool   `json:"protected,omitempty"`
+	SourceSHA256 string `json:"source_sha256,omitempty"`
 }
 
 type MountState struct {

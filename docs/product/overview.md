@@ -26,7 +26,7 @@ You declare one or more **sources** — git repos or local directories containin
 - **Promote** experimental skills to stable when you're ready to share them.
 - **Mount selectively by kind** (agents, skills, rules, mcp, instructions).
 - **Inspect** the resolved state — which sources, which mounted files grouped by kind, what's protected, what's pinned, what's healthy.
-- **Audit** active context against `.csaw/policy.yml` for required sources, blocked sources, required kinds, and mount health.
+- **Audit** active context against `.csaw/policy.yml` for required sources, blocked sources, required kinds, mount health, and protected content drift.
 
 Update a source — every project sees the change instantly through the symlinks. Unmount, and originals stashed during mount are restored.
 

@@ -67,7 +67,7 @@ Optional fields are omitted when empty.
 | `policy.missing` | `warn` | No `.csaw/policy.yml` or `.csaw/policy.yaml` was found. |
 | `mount.none` | `warn` | No active csaw context was found. |
 | `mount.healthy` | `ok` | All inspected mounted files are healthy. |
-| `mount.unhealthy` | `error` | A mounted file is missing, replaced, drifted, or points to a missing source. |
+| `mount.unhealthy` | `error` | A mounted file is missing, replaced, drifted, points to a missing source, or has protected content drift. |
 | `source.required.present` | `ok` | A required source is active and healthy. |
 | `source.required.missing` | `error` | A required source is not active and healthy. |
 | `source.required.metadata_missing` | `error` | A required source is active, but its configured metadata could not be found for URL verification. |
@@ -124,6 +124,21 @@ required_kinds:
   - skills
   - mcp
 ```
+
+## Mount Health Details
+
+`mount.unhealthy` uses the `detail` field to identify the mount health issue:
+
+| Detail | Meaning |
+|---|---|
+| `missing-source` | The recorded source file no longer exists. |
+| `missing-link` | The project path recorded in mount state no longer exists. |
+| `replaced-link` | The project path exists but is no longer the expected csaw-managed link. |
+| `drifted-link` | The project path is a link, but it points somewhere other than the recorded source. |
+| `protected-content-drift` | A protected mounted file no longer matches the SHA-256 hash recorded at mount time. |
+| `protected-hash-unreadable` | csaw could not read a protected mounted file to verify its hash. |
+
+Remount the context to accept an intentional protected source update and record a new protected hash.
 
 ## Example Reports
 

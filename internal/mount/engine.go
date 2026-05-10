@@ -66,7 +66,11 @@ func Apply(projectRoot string, paths runtime.Paths, entries []SourceEntry, resol
 			if linkmode.IsLink(lm, targetPath, entry.FullPath) {
 				healthy, _ := linkmode.Verify(lm, targetPath, entry.FullPath, runtime.PathsEqual)
 				if healthy {
-					currentState = workspace.UpsertMountedEntry(currentState, toMountedStateEntry(entry))
+					stateEntry, err := toMountedStateEntry(entry)
+					if err != nil {
+						return result, err
+					}
+					currentState = workspace.UpsertMountedEntry(currentState, stateEntry)
 					if !workspace.IsGitIgnored(projectRoot, entry.RelativePath) {
 						if _, err := workspace.AddExclusion(projectRoot, entry.RelativePath); err != nil {
 							return result, err
@@ -122,7 +126,11 @@ func Apply(projectRoot string, paths runtime.Paths, entries []SourceEntry, resol
 			}
 		}
 
-		currentState = workspace.UpsertMountedEntry(currentState, toMountedStateEntry(entry))
+		stateEntry, err := toMountedStateEntry(entry)
+		if err != nil {
+			return result, err
+		}
+		currentState = workspace.UpsertMountedEntry(currentState, stateEntry)
 		result.Linked++
 	}
 
@@ -247,6 +255,7 @@ func EntriesFromMountedState(state workspace.MountState) []SourceEntry {
 			RelativePath:  entry.RelativePath,
 			QualifiedPath: entry.SourceName + "/" + entry.RelativePath,
 			FullPath:      entry.SourcePath,
+			Protected:     entry.Protected,
 		})
 	}
 	return entries
@@ -403,6 +412,7 @@ func filterMountedStateEntries(entries []workspace.MountedStateEntry, selection 
 			RelativePath:  entry.RelativePath,
 			QualifiedPath: entry.SourceName + "/" + entry.RelativePath,
 			FullPath:      entry.SourcePath,
+			Protected:     entry.Protected,
 		}
 		include, err := matchesQualified(sourceEntry, selection.IncludePatterns, true)
 		if err != nil {
@@ -423,10 +433,21 @@ func filterMountedStateEntries(entries []workspace.MountedStateEntry, selection 
 	return filtered, nil
 }
 
-func toMountedStateEntry(entry SourceEntry) workspace.MountedStateEntry {
-	return workspace.MountedStateEntry{
+func toMountedStateEntry(entry SourceEntry) (workspace.MountedStateEntry, error) {
+	stateEntry := workspace.MountedStateEntry{
 		RelativePath: entry.RelativePath,
 		SourceName:   entry.SourceName,
 		SourcePath:   entry.FullPath,
 	}
+	if !entry.Protected {
+		return stateEntry, nil
+	}
+
+	hash, err := workspace.FileSHA256(entry.FullPath)
+	if err != nil {
+		return workspace.MountedStateEntry{}, err
+	}
+	stateEntry.Protected = true
+	stateEntry.SourceSHA256 = hash
+	return stateEntry, nil
 }

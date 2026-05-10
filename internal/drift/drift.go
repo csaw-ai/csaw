@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	IssueMissingSource = "missing-source"
-	IssueDriftedLink   = "drifted-link"
-	IssueMissingLink   = "missing-link"
-	IssueReplacedLink  = "replaced-link"
+	IssueMissingSource           = "missing-source"
+	IssueDriftedLink             = "drifted-link"
+	IssueMissingLink             = "missing-link"
+	IssueReplacedLink            = "replaced-link"
+	IssueProtectedContentDrift   = "protected-content-drift"
+	IssueProtectedHashUnreadable = "protected-hash-unreadable"
 )
 
 type Status struct {
@@ -25,6 +27,9 @@ type Status struct {
 	ActualTarget   string
 	ResolvedTarget string
 	Issue          string
+	Protected      bool
+	ExpectedHash   string
+	ActualHash     string
 }
 
 func InspectLinks(links []workspace.MountedLink) []Status {
@@ -58,6 +63,8 @@ func InspectMountState(projectRoot string, state workspace.MountState, lm linkmo
 			FullPath:       fullPath,
 			SourceName:     entry.SourceName,
 			ExpectedSource: entry.SourcePath,
+			Protected:      entry.Protected,
+			ExpectedHash:   entry.SourceSHA256,
 		}
 
 		if _, err := os.Stat(entry.SourcePath); err != nil {
@@ -94,6 +101,20 @@ func InspectMountState(projectRoot string, state workspace.MountState, lm linkmo
 		if !healthy {
 			status.Healthy = false
 			status.Issue = IssueDriftedLink
+		}
+
+		if status.Healthy && status.Protected && status.ExpectedHash != "" {
+			actualHash, err := workspace.FileSHA256(fullPath)
+			if err != nil {
+				status.Healthy = false
+				status.Issue = IssueProtectedHashUnreadable
+			} else {
+				status.ActualHash = actualHash
+				if actualHash != status.ExpectedHash {
+					status.Healthy = false
+					status.Issue = IssueProtectedContentDrift
+				}
+			}
 		}
 
 		statuses = append(statuses, status)

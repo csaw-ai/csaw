@@ -951,7 +951,7 @@ func newUpdateCommand() *cobra.Command {
 
 			unresolved := 0
 			for _, status := range statuses {
-				if !status.Healthy && (status.Issue == drift.IssueMissingSource || status.Issue == drift.IssueReplacedLink) {
+				if !status.Healthy {
 					unresolved++
 				}
 			}
