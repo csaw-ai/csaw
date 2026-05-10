@@ -3,11 +3,14 @@ package audit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/NicholasCullenCooper/csaw/internal/linkmode"
 	"github.com/NicholasCullenCooper/csaw/internal/mount"
+	"github.com/NicholasCullenCooper/csaw/internal/pinning"
 	"github.com/NicholasCullenCooper/csaw/internal/runtime"
+	"github.com/NicholasCullenCooper/csaw/internal/sources"
 	"github.com/NicholasCullenCooper/csaw/internal/workspace"
 )
 
@@ -76,6 +79,63 @@ required_kinds:
 	assertFinding(t, report, "kind.required.present", SeverityOK)
 }
 
+func TestRunChecksRequiredSourceURLAndRef(t *testing.T) {
+	project := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
+	writeSourceConfig(t, paths, sources.Source{
+		Name: "client",
+		Kind: sources.KindRemote,
+		URL:  "git@example.com:org/client-ai.git",
+	})
+	writePinState(t, project, pinning.Pin{Source: "client", Ref: "main"})
+	writePolicy(t, project, `
+required_sources:
+  - name: client
+    url: git@example.com:org/client-ai.git
+    ref: main
+`)
+	writeMountedFile(t, project, "AGENTS.md", "client", "instructions")
+
+	report, err := Run(project, paths)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if report.Failed(false) {
+		t.Fatalf("report should pass, findings: %+v", report.Findings)
+	}
+	assertFinding(t, report, "source.required.present", SeverityOK)
+	assertFinding(t, report, "source.required.url_match", SeverityOK)
+	assertFinding(t, report, "source.required.ref_match", SeverityOK)
+}
+
+func TestRunFailsForRequiredSourceURLAndRefMismatch(t *testing.T) {
+	project := t.TempDir()
+	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
+	writeSourceConfig(t, paths, sources.Source{
+		Name: "client",
+		Kind: sources.KindRemote,
+		URL:  "git@example.com:org/other-ai.git",
+	})
+	writePolicy(t, project, `
+required_sources:
+  - name: client
+    url: git@example.com:org/client-ai.git
+    ref: main
+`)
+	writeMountedFile(t, project, "AGENTS.md", "client", "instructions")
+
+	report, err := Run(project, paths)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !report.Failed(false) {
+		t.Fatalf("report should fail, findings: %+v", report.Findings)
+	}
+	assertFinding(t, report, "source.required.present", SeverityOK)
+	assertFinding(t, report, "source.required.url_mismatch", SeverityError)
+	assertFinding(t, report, "source.required.ref_mismatch", SeverityError)
+}
+
 func TestRunFailsForMissingAndBlockedContext(t *testing.T) {
 	project := t.TempDir()
 	paths := runtime.BuildPaths(filepath.Join(t.TempDir(), ".csaw"))
@@ -129,12 +189,78 @@ blocked_sources:
 	}
 }
 
+func TestInitPolicyCreatesDefaultPolicy(t *testing.T) {
+	project := t.TempDir()
+
+	policyPath, created, err := InitPolicy(project, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitPolicy() error = %v", err)
+	}
+	if !created {
+		t.Fatal("InitPolicy() created = false, want true")
+	}
+	if filepath.Base(policyPath) != PolicyFileName {
+		t.Fatalf("policy path = %q, want %s", policyPath, PolicyFileName)
+	}
+
+	content, err := os.ReadFile(policyPath)
+	if err != nil {
+		t.Fatalf("ReadFile(policy) error = %v", err)
+	}
+	if !strings.Contains(string(content), "required_sources: []") {
+		t.Fatalf("default policy missing required_sources: %s", content)
+	}
+
+	if _, _, found, err := LoadPolicy(project); err != nil || !found {
+		t.Fatalf("LoadPolicy() found=%v err=%v, want found with no error", found, err)
+	}
+}
+
+func TestInitPolicyRefusesOverwriteWithoutForce(t *testing.T) {
+	project := t.TempDir()
+	writePolicy(t, project, "required_sources: []\n")
+
+	if _, _, err := InitPolicy(project, InitOptions{}); err == nil {
+		t.Fatal("InitPolicy() error = nil, want overwrite refusal")
+	}
+
+	policyPath, created, err := InitPolicy(project, InitOptions{Force: true})
+	if err != nil {
+		t.Fatalf("InitPolicy(force) error = %v", err)
+	}
+	if created {
+		t.Fatal("InitPolicy(force) created = true, want false for overwrite")
+	}
+	content, err := os.ReadFile(policyPath)
+	if err != nil {
+		t.Fatalf("ReadFile(policy) error = %v", err)
+	}
+	if !strings.Contains(string(content), "csaw project policy") {
+		t.Fatalf("policy was not overwritten with default template: %s", content)
+	}
+}
+
 func TestSourceMatchesGlob(t *testing.T) {
 	if !sourceMatches("client-*", "client-acme") {
 		t.Fatal("expected glob source match")
 	}
 	if sourceMatches("client-*", "personal") {
 		t.Fatal("unexpected glob source match")
+	}
+}
+
+func writeSourceConfig(t *testing.T, paths runtime.Paths, source sources.Source) {
+	t.Helper()
+	manager := sources.Manager{Paths: paths}
+	if err := manager.Save(sources.Config{Sources: []sources.Source{source}}); err != nil {
+		t.Fatalf("Save(source config) error = %v", err)
+	}
+}
+
+func writePinState(t *testing.T, project string, pins ...pinning.Pin) {
+	t.Helper()
+	if err := pinning.Write(project, pinning.PinState{Pins: pins}); err != nil {
+		t.Fatalf("pinning.Write() error = %v", err)
 	}
 }
 

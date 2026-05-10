@@ -370,6 +370,27 @@ required_kinds:
 	}
 }
 
+func TestE2EAuditInitWritesPolicy(t *testing.T) {
+	env := newE2EEnv(t)
+
+	out := env.run("audit", "--init")
+	if !strings.Contains(out, "created") {
+		t.Fatalf("audit --init output should report created policy, got: %s", out)
+	}
+	if !env.fileExists(".csaw/policy.yml") {
+		t.Fatal("audit --init should create .csaw/policy.yml")
+	}
+	if !strings.Contains(env.readFile(".csaw/policy.yml"), "required_sources: []") {
+		t.Fatal("policy should include starter required_sources")
+	}
+
+	env.runExpectError("audit", "--init")
+	out = env.run("audit", "--init", "--force")
+	if !strings.Contains(out, "updated") {
+		t.Fatalf("audit --init --force output should report updated policy, got: %s", out)
+	}
+}
+
 func TestE2EFork(t *testing.T) {
 	env := newE2EEnv(t)
 

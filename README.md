@@ -305,15 +305,23 @@ Protection is **advisory within csaw** — it prevents csaw's own mechanisms fro
 
 ## Auditing Active Context
 
+Create a starter policy:
+
+```bash
+csaw audit --init
+```
+
 Projects can declare local context requirements in `.csaw/policy.yml`:
 
 ```yaml
 required_sources:
-  - client-acme
   - team
+  - name: client-acme
+    url: git@example.com:org/client-acme-ai.git
+    ref: main
 blocked_sources:
-  - personal-experimental
   - other-client-*
+  - personal-experimental
 required_kinds:
   - instructions
   - rules
@@ -328,9 +336,37 @@ csaw audit --strict
 csaw audit --json
 ```
 
-`csaw audit` checks active mount health, required sources, blocked source patterns, and required artifact kinds. Default mode exits nonzero on errors. `--strict` also exits nonzero on warnings, including a missing project policy.
+`csaw audit` checks active mount health, required sources, required source URLs and project pins, blocked source patterns, and required artifact kinds. Default mode exits nonzero on errors. `--strict` also exits nonzero on warnings, including a missing project policy.
+
+The `ref` field checks the project pin set by `csaw pin client-acme@main`; it is not inferred from the source checkout's current branch. The JSON output is documented in [docs/reference/audit-json.md](docs/reference/audit-json.md).
 
 This is **local assurance**, not hard prevention. csaw can tell you Client A context is active and Client B context is mounted, but it does not sandbox your machine or stop a user from manually editing files.
+
+Example client isolation policy:
+
+```yaml
+required_sources:
+  - name: client-acme
+    url: git@example.com:org/client-acme-ai.git
+    ref: approved
+blocked_sources:
+  - other-client-*
+  - personal-experimental
+required_kinds:
+  - instructions
+  - mcp
+```
+
+Example team policy:
+
+```yaml
+required_sources:
+  - platform-team
+blocked_sources: []
+required_kinds:
+  - instructions
+  - rules
+```
 
 ---
 
@@ -641,6 +677,7 @@ Profiles support glob patterns and inheritance. `extends` pulls in everything fr
 | `csaw unmount [patterns]` | Remove mounted files, restore originals. |
 | `csaw inspect` | Full state: sources, mounts, priorities, pins. |
 | `csaw audit [path]` | Audit active context against `.csaw/policy.yml`. |
+| `csaw audit --init [path]` | Write a starter `.csaw/policy.yml`. |
 | `csaw check` | Detect broken or drifted symlinks. |
 | `csaw update` | Repair drifted links. |
 | `csaw diff path` | Diff a mounted file against its source. |
@@ -668,6 +705,8 @@ Profiles support glob patterns and inheritance. `extends` pulls in everything fr
 | `--include-experimental` | mount | Include experimental skills (hidden by .csawignore). |
 | `--strict` | audit | Fail on warnings as well as errors. |
 | `--json` | audit | Emit a machine-readable audit report. |
+| `--init` | audit | Write a starter `.csaw/policy.yml`. |
+| `--force` | audit | Overwrite an existing policy when used with `--init`. |
 | `--adopt` | init | Import existing AI config from current project. |
 | `--stash` | pull | Stash uncommitted changes before pulling. |
 | `--priority n` | source add | Source priority (higher wins on conflict). |

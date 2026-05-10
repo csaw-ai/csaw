@@ -21,5 +21,6 @@
 
 - [`decisions/0001-repo-as-system-of-record.md`](decisions/0001-repo-as-system-of-record.md)
 - [`reference/project-management.md`](reference/project-management.md)
+- [`reference/audit-json.md`](reference/audit-json.md)
 - [`reference/public-repo-policy.md`](reference/public-repo-policy.md)
 - [`reference/dotghost-reference.md`](reference/dotghost-reference.md)

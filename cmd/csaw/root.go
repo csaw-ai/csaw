@@ -801,6 +801,8 @@ func newInspectCommand() *cobra.Command {
 func newAuditCommand() *cobra.Command {
 	var strict bool
 	var jsonOut bool
+	var initPolicy bool
+	var forceInit bool
 
 	cmd := &cobra.Command{
 		Use:   "audit [path]",
@@ -815,6 +817,22 @@ func newAuditCommand() *cobra.Command {
 			projectRoot, err := runtime.FindRepoRoot(target)
 			if err != nil {
 				return err
+			}
+
+			if initPolicy {
+				if jsonOut || strict {
+					return errors.New("--init cannot be combined with --json or --strict")
+				}
+				policyPath, created, err := audit.InitPolicy(projectRoot, audit.InitOptions{Force: forceInit})
+				if err != nil {
+					return err
+				}
+				action := "created"
+				if !created {
+					action = "updated"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", action, policyPath)
+				return nil
 			}
 
 			paths, err := runtime.ResolvePaths()
@@ -848,6 +866,8 @@ func newAuditCommand() *cobra.Command {
 
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail on warnings as well as errors")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit a JSON audit report")
+	cmd.Flags().BoolVar(&initPolicy, "init", false, "write a starter .csaw/policy.yml")
+	cmd.Flags().BoolVar(&forceInit, "force", false, "overwrite an existing audit policy when used with --init")
 	return cmd
 }
 

@@ -187,6 +187,6 @@ This is useful only where development environment state intersects AI context. c
 
 The highest-leverage next implementation issue is:
 
-**Add `csaw audit --init` and document the audit JSON schema.**
+**Add protected-file hash verification.**
 
-This improves adoption of the just-released governance surface, keeps the scope small, and gives future CI/reporting integrations a stable contract.
+This turns protected files from composition-time policy into audit-time evidence, and it is the next concrete step toward client isolation without overstating enforcement.

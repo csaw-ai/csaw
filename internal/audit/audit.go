@@ -16,7 +16,9 @@ import (
 	"github.com/NicholasCullenCooper/csaw/internal/linkmode"
 	"github.com/NicholasCullenCooper/csaw/internal/mount"
 	"github.com/NicholasCullenCooper/csaw/internal/output"
+	"github.com/NicholasCullenCooper/csaw/internal/pinning"
 	"github.com/NicholasCullenCooper/csaw/internal/runtime"
+	"github.com/NicholasCullenCooper/csaw/internal/sources"
 	"github.com/NicholasCullenCooper/csaw/internal/workspace"
 )
 
@@ -24,6 +26,36 @@ const (
 	PolicyDirName  = ".csaw"
 	PolicyFileName = "policy.yml"
 )
+
+const DefaultPolicyTemplate = `# csaw project policy
+#
+# Keep project-owned context in the repo. Use this file for context that must be
+# composed, pinned, blocked, or audited as local state.
+
+# Sources that must be mounted before work starts.
+#
+# A string checks only the source name:
+#   - team
+#
+# An object can also require the configured source URL and project pin. The
+# ref is the csaw project pin set by "csaw pin <source>@<ref>"; audit does not
+# infer it from the source checkout's current branch.
+required_sources: []
+#  - name: client-acme
+#    url: git@example.com:org/client-acme-ai.git
+#    ref: main
+
+# Sources that must not be active in this project. Glob patterns are supported.
+blocked_sources: []
+#  - other-client-*
+#  - personal-experimental
+
+# Artifact kinds that must be mounted. Valid values:
+# instructions, rules, agents, skills, mcp.
+required_kinds: []
+#  - instructions
+#  - rules
+`
 
 type Severity string
 
@@ -63,6 +95,35 @@ type Report struct {
 	Findings    []Finding `json:"findings"`
 }
 
+type InitOptions struct {
+	Force bool
+}
+
+func InitPolicy(projectRoot string, options InitOptions) (string, bool, error) {
+	existing, found, err := ExistingPolicyPath(projectRoot)
+	if err != nil {
+		return "", false, err
+	}
+	if found && !options.Force {
+		return "", false, fmt.Errorf("%s already exists; rerun with --force to overwrite", existing)
+	}
+
+	target := filepath.Join(projectRoot, PolicyDirName, PolicyFileName)
+	created := true
+	if found {
+		target = existing
+		created = false
+	}
+
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return "", false, err
+	}
+	if err := os.WriteFile(target, []byte(DefaultPolicyTemplate), 0o644); err != nil {
+		return "", false, err
+	}
+	return target, created, nil
+}
+
 func Run(projectRoot string, paths runtime.Paths) (Report, error) {
 	policy, policyPath, policyFound, err := LoadPolicy(projectRoot)
 	if err != nil {
@@ -100,7 +161,11 @@ func Run(projectRoot string, paths runtime.Paths) (Report, error) {
 
 	report.checkMountHealth(statuses)
 	if policyFound {
-		report.checkRequiredSources(policy.RequiredSources, statuses)
+		sourceIndex, pinState, err := loadSourceContext(projectRoot, paths, policy.RequiredSources)
+		if err != nil {
+			return Report{}, err
+		}
+		report.checkRequiredSources(policy.RequiredSources, statuses, sourceIndex, pinState)
 		report.checkBlockedSources(policy.BlockedSources, statuses)
 		report.checkRequiredKinds(policy.RequiredKinds, statuses)
 	}
@@ -109,28 +174,44 @@ func Run(projectRoot string, paths runtime.Paths) (Report, error) {
 }
 
 func LoadPolicy(projectRoot string) (Policy, string, bool, error) {
+	candidate, found, err := ExistingPolicyPath(projectRoot)
+	if err != nil {
+		return Policy{}, "", false, err
+	}
+	if !found {
+		return Policy{}, "", false, nil
+	}
+
+	content, err := os.ReadFile(candidate)
+	if err != nil {
+		return Policy{}, "", false, err
+	}
+
+	policy, err := parsePolicy(content)
+	if err != nil {
+		return Policy{}, "", false, fmt.Errorf("%s: %w", candidate, err)
+	}
+	return policy, candidate, true, nil
+}
+
+func ExistingPolicyPath(projectRoot string) (string, bool, error) {
 	candidates := []string{
 		filepath.Join(projectRoot, PolicyDirName, PolicyFileName),
 		filepath.Join(projectRoot, PolicyDirName, "policy.yaml"),
 	}
 
 	for _, candidate := range candidates {
-		content, err := os.ReadFile(candidate)
+		_, err := os.Stat(candidate)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return Policy{}, "", false, err
+			return "", false, err
 		}
-
-		policy, err := parsePolicy(content)
-		if err != nil {
-			return Policy{}, "", false, fmt.Errorf("%s: %w", candidate, err)
-		}
-		return policy, candidate, true, nil
+		return candidate, true, nil
 	}
 
-	return Policy{}, "", false, nil
+	return "", false, nil
 }
 
 func parsePolicy(content []byte) (Policy, error) {
@@ -317,25 +398,116 @@ func (r *Report) checkMountHealth(statuses []drift.Status) {
 	}
 }
 
-func (r *Report) checkRequiredSources(requirements []SourceRequirement, statuses []drift.Status) {
+func loadSourceContext(projectRoot string, paths runtime.Paths, requirements []SourceRequirement) (map[string]sources.Source, pinning.PinState, error) {
+	sourceIndex := map[string]sources.Source{}
+	if sourceRequirementsNeedURL(requirements) {
+		manager := sources.Manager{Paths: paths}
+		cfg, err := manager.Load()
+		if err != nil {
+			return nil, pinning.PinState{}, err
+		}
+		sourceIndex = make(map[string]sources.Source, len(cfg.Sources))
+		for _, source := range cfg.Sources {
+			sourceIndex[source.Name] = source
+		}
+	}
+
+	pinState, err := pinning.Read(projectRoot)
+	if err != nil {
+		return nil, pinning.PinState{}, err
+	}
+
+	return sourceIndex, pinState, nil
+}
+
+func sourceRequirementsNeedURL(requirements []SourceRequirement) bool {
+	for _, requirement := range requirements {
+		if requirement.URL != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Report) checkRequiredSources(requirements []SourceRequirement, statuses []drift.Status, sourceIndex map[string]sources.Source, pinState pinning.PinState) {
 	active := healthySources(statuses)
 	for _, requirement := range requirements {
-		if active[requirement.Name] {
-			r.add(Finding{
-				ID:       "source.required.present",
-				Severity: SeverityOK,
-				Message:  fmt.Sprintf("required source %q is active", requirement.Name),
-				Source:   requirement.Name,
-			})
-			continue
-		}
+		r.checkRequiredSource(requirement, active, sourceIndex, pinState)
+	}
+}
 
+func (r *Report) checkRequiredSource(requirement SourceRequirement, active map[string]bool, sourceIndex map[string]sources.Source, pinState pinning.PinState) {
+	if !active[requirement.Name] {
 		r.add(Finding{
 			ID:       "source.required.missing",
 			Severity: SeverityError,
 			Message:  fmt.Sprintf("required source %q is not active", requirement.Name),
 			Source:   requirement.Name,
 		})
+		return
+	}
+
+	r.add(Finding{
+		ID:       "source.required.present",
+		Severity: SeverityOK,
+		Message:  fmt.Sprintf("required source %q is active", requirement.Name),
+		Source:   requirement.Name,
+	})
+
+	if requirement.URL != "" {
+		source, ok := sourceIndex[requirement.Name]
+		if !ok {
+			r.add(Finding{
+				ID:       "source.required.metadata_missing",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("required source %q is active but not configured", requirement.Name),
+				Source:   requirement.Name,
+				Detail:   "cannot verify required url",
+			})
+		} else if source.URL != requirement.URL {
+			r.add(Finding{
+				ID:       "source.required.url_mismatch",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("required source %q URL does not match policy", requirement.Name),
+				Source:   requirement.Name,
+				Detail:   fmt.Sprintf("expected %s, configured %s", requirement.URL, source.URL),
+			})
+		} else {
+			r.add(Finding{
+				ID:       "source.required.url_match",
+				Severity: SeverityOK,
+				Message:  fmt.Sprintf("required source %q URL matches policy", requirement.Name),
+				Source:   requirement.Name,
+			})
+		}
+	}
+
+	if requirement.Ref != "" {
+		ref, ok := pinning.Get(pinState, requirement.Name)
+		if !ok {
+			r.add(Finding{
+				ID:       "source.required.ref_mismatch",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("required source %q pin does not match policy", requirement.Name),
+				Source:   requirement.Name,
+				Detail:   fmt.Sprintf("expected %s, actual unpinned", requirement.Ref),
+			})
+		} else if ref != requirement.Ref {
+			r.add(Finding{
+				ID:       "source.required.ref_mismatch",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("required source %q pin does not match policy", requirement.Name),
+				Source:   requirement.Name,
+				Detail:   fmt.Sprintf("expected %s, actual %s", requirement.Ref, ref),
+			})
+		} else {
+			r.add(Finding{
+				ID:       "source.required.ref_match",
+				Severity: SeverityOK,
+				Message:  fmt.Sprintf("required source %q pin matches policy", requirement.Name),
+				Source:   requirement.Name,
+			})
+		}
 	}
 }
 

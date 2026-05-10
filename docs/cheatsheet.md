@@ -41,6 +41,7 @@ csaw unmount agents/go.md               # unmount specific files
 ```bash
 csaw inspect                            # full state overview
 csaw inspect --source team              # browse a source
+csaw audit --init                       # create .csaw/policy.yml
 csaw audit                              # verify active context against policy
 csaw audit --strict                     # fail on warnings and errors
 csaw audit --json                       # machine-readable report
@@ -179,7 +180,7 @@ my-registry/
 
 **Protected files** — A source can mark files as `protected:` in its `csaw.yml`. Protected files bypass priority (always win) and refuse `csaw fork`. The mechanism behind team and client governance.
 
-**Project policy** — A project can declare `.csaw/policy.yml` with `required_sources`, `blocked_sources`, and `required_kinds`. `csaw audit` checks the active mounted context against that policy. `--strict` fails on warnings, including a missing policy.
+**Project policy** — A project can declare `.csaw/policy.yml` with `required_sources`, `blocked_sources`, and `required_kinds`. Use `csaw audit --init` to create a starter policy. `required_sources` can require a source name, configured URL, and project pin. `csaw audit` checks the active mounted context against that policy. `--strict` fails on warnings, including a missing policy.
 
 **Pinning** — Lock a source to a branch/tag per project with `csaw pin`. Uses git worktrees so other projects stay on the default branch.
 
