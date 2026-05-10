@@ -28,6 +28,8 @@ You have **more than one source of AI configuration**:
 
 If you only have one set of AI files to manage, simpler tools work fine. csaw earns its complexity when you have multiple stakeholders in your AI workspace.
 
+Want the full learning path? See the [csaw curriculum](docs/curriculum.md).
+
 ## The problem
 
 Multi-stakeholder AI config is a governance problem:

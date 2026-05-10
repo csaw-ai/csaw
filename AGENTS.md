@@ -64,6 +64,7 @@ Do not create a repo-root `TODO.md` backlog.
 - Keep cross-tool compatibility. `AGENTS.md` is the primary instruction surface.
 - Use issue templates, exec plans, and the tech debt tracker instead of ad hoc notes.
 - If you change workflows, architecture, or validation commands, update the docs in the same change.
+- If you change user-facing commands, config, audit findings, kinds, projections, or workflows, update [`docs/curriculum.md`](docs/curriculum.md).
 - Do not commit secrets, credentials, private keys, or local workstation paths.
 - Use generic examples in docs and issues. Prefer placeholders like `git@example.com:org/repo.git` over personal or machine-specific paths.
 

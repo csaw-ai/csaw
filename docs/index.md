@@ -4,6 +4,7 @@
 
 - [`product/overview.md`](product/overview.md)
 - [`product/roadmap.md`](product/roadmap.md)
+- [`curriculum.md`](curriculum.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
 - [`../AGENTS.md`](../AGENTS.md)
